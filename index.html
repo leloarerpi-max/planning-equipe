@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning &amp; Objectif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --paper:#F1EFE8;
+    --panel:#FAF9F5;
+    --ink:#242220;
+    --ink-soft:#6b6660;
+    --line:#DCD5C6;
+    --line-strong:#B9AF98;
+    --teal:#2F6F63;
+    --teal-bg:#E4EFEC;
+    --ochre:#B9702E;
+    --ochre-bg:#F6E9D9;
+    --violet:#5B4B8A;
+    --violet-bg:#EDE9F5;
+    --danger:#A23B2E;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .wrap{ max-width:1060px; margin:0 auto; padding:28px 16px 60px; }
+  header{ margin-bottom:16px; }
+  h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:clamp(26px,5vw,34px); margin:0 0 4px; letter-spacing:-0.01em; }
+  .subtitle{ color:var(--ink-soft); font-size:14px; margin:0; line-height:1.5; }
+
+  /* day bar / history */
+  .daybar{
+    display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+    background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
+    padding:10px; margin:16px 0 12px;
+  }
+  .day-pill{
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff; border:1px solid var(--line-strong); border-radius:20px;
+    padding:6px 10px; font-size:12.5px; cursor:pointer; color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .day-pill:hover{ border-color:var(--violet); }
+  .day-pill.active{ background:var(--violet); border-color:var(--violet); color:#fff; font-weight:600; }
+  .day-pill .mini-count{ font-size:11px; opacity:.85; }
+  .day-pill .day-del{ background:none; border:none; color:inherit; opacity:.6; cursor:pointer; font-size:12px; padding:0 2px; }
+  .day-pill .day-del:hover{ opacity:1; }
+  .btn-newday{
+    background:var(--ink); color:#fff; border:none; border-radius:20px; padding:7px 14px;
+    font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;
+  }
+  .btn-newday:hover{ background:#3a3733; }
+
+  .toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px; align-items:center; }
+  button{ font-family:inherit; font-size:13.5px; cursor:pointer; border-radius:var(--radius); }
+  .btn{ background:var(--panel); border:1px solid var(--line-strong); color:var(--ink); padding:7px 12px; transition:background .12s ease, border-color .12s ease; }
+  .btn:hover{ background:#fff; border-color:var(--violet); }
+  .btn-ghost{ background:transparent; border:1px solid transparent; color:var(--ink-soft); text-decoration:underline; text-underline-offset:2px; padding:7px 4px; }
+  .btn-ghost:hover{ color:var(--danger); }
+
+  .status{ font-size:12.5px; color:var(--ink-soft); min-height:18px; margin:2px 0 10px; }
+  .status.saving{ color:var(--violet); }
+  .status.error{ color:var(--danger); }
+
+  /* filters */
+  .filters{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }
+  .filters select{
+    font-family:inherit; font-size:12.5px; padding:6px 10px; border:1px solid var(--line-strong);
+    border-radius:20px; background:#fff; color:var(--ink); cursor:pointer;
+  }
+  .filters select:focus{ outline:1px solid var(--violet); }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:14px; margin:0 2px 16px; font-size:12.5px; color:var(--ink-soft); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .swatch{ width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+  .team-objectif{
+    background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
+    padding:18px 20px; margin-bottom:16px; display:flex; align-items:center; gap:22px; flex-wrap:wrap;
+  }
+  .today-ring{ flex-shrink:0; }
+  .today-ring .ring-pct{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:20px; fill:var(--ink); }
+  .today-info .today-date{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:18px; margin-bottom:4px; }
+  .today-info .today-nums{ font-size:13.5px; color:var(--ink-soft); margin-bottom:8px; }
+  .today-info .today-nums b{ color:var(--ink); font-weight:700; }
+  .team-objectif .label{ font-size:12.5px; color:var(--ink-soft); }
+  .bar-track{ background:var(--line); border-radius:2px; height:8px; overflow:hidden; margin-bottom:4px; }
+  .bar-fill{ height:100%; background:var(--ochre); transition:width .2s ease; }
+  .bar-fill.reached{ background:var(--teal); }
+  .bar-caption{ font-size:11.5px; color:var(--ink-soft); }
+
+  /* micro-animation when a task is marked Fait */
+  @keyframes rowPulse{
+    0%{ box-shadow: inset 0 0 0 0 rgba(47,111,99,0); }
+    30%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,.22); }
+    100%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,0); }
+  }
+  tr.task-row.just-done{ animation: rowPulse .7s ease-out; }
+  @keyframes checkPop{
+    0%{ transform: scale(0); opacity:0; }
+    55%{ transform: scale(1.3); opacity:1; }
+    100%{ transform: scale(1); opacity:1; }
+  }
+
+  .table-shell{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; min-width:720px; font-size:13.5px; }
+  thead th{ position:sticky; top:0; background:var(--panel); z-index:2; text-align:left; font-weight:600; padding:12px 10px; border-bottom:1.5px solid var(--line-strong); white-space:nowrap; }
+  tbody td{ padding:0; border-bottom:1px solid var(--line); vertical-align:middle; }
+
+  tr.task-row.row-rose{ background:#F2D0CA; }
+  tr.task-row.row-peche{ background:#FBE3C4; }
+  tr.task-row.row-bleu{ background:#C9D8EB; }
+  tr.task-row.row-empty{ background:transparent; }
+  tr.task-row:hover{ filter:brightness(0.98); }
+
+  select.priority-select{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13px; font-weight:700; padding:10px 4px; cursor:pointer; text-align:center; text-align-last:center; appearance:none; -webkit-appearance:none; }
+  select.priority-select.pr-rose{ color:#9C4A3E; }
+  select.priority-select.pr-peche{ color:#A8721E; }
+  select.priority-select.pr-bleu{ color:#3C5C82; }
+  select.priority-select.pr-empty{ color:var(--ink-soft); }
+
+  td.task-name{ padding:10px; font-weight:500; max-width:250px; }
+  td.task-name input{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); }
+  td.task-name input:focus{ outline:1px solid var(--violet); border-radius:2px; }
+
+  td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
+  select.person-slot-select{
+    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
+    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
+    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
+    color:var(--ink-soft); background:transparent; letter-spacing:.2px;
+  }
+  select.person-slot-select.has-person{ color:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06); }
+
+  select.status-select{
+    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
+    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
+    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
+    letter-spacing:.2px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+  select.status-select.st-fait{ background:var(--teal); color:#fff; }
+  select.status-select.st-afaire{ background:var(--ochre); color:#fff; }
+  select.status-select.st-empty{ background:#fff; color:var(--ink-soft); box-shadow:inset 0 0 0 1px var(--line-strong); }
+  td.status-cell{ position:relative; text-align:center; }
+  .status-check{
+    position:absolute; top:50%; right:6px; transform:translateY(-50%);
+    color:var(--teal); font-weight:800; font-size:15px; pointer-events:none;
+    animation: checkPop .45s ease-out;
+  }
+
+  input.obj-input{ width:66px; border:none; background:transparent; font-family:inherit; font-size:13.5px; padding:10px 4px; text-align:center; color:var(--ink); }
+  input.obj-input:focus{ outline:1px solid var(--violet); border-radius:2px; }
+  input.obj-input:disabled{ opacity:.45; cursor:not-allowed; }
+  td.obj-cell{ text-align:center; }
+
+  button.remove-x{ opacity:.5; color:var(--ink-soft); background:none; border:none; font-size:14px; padding:6px 10px; cursor:pointer; }
+  button.remove-x:hover{ opacity:1; color:var(--danger); }
+
+  .summary{ margin-top:28px; }
+  .summary h2{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:19px; margin:0 0 4px; }
+  .summary .hint{ color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; }
+  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12.5px; }
+  .bar-row .bar-label{ width:130px; flex-shrink:0; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; }
+  .bar-row .bar-track{ flex:1; margin-bottom:0; }
+  .bar-row .bar-count{ width:70px; text-align:right; color:var(--ink-soft); flex-shrink:0; }
+  .bar-row .person-obj-input{
+    width:52px; font-family:inherit; font-size:12.5px; text-align:center; padding:3px 4px;
+    border:1px solid var(--line-strong); border-radius:2px; background:#fff; color:var(--ink); flex-shrink:0;
+  }
+  .bar-row .person-obj-input:focus{ outline:1px solid var(--violet); }
+  .bar-row .person-obj-input:disabled{ opacity:.45; cursor:not-allowed; }
+
+  .empty-note{ padding:24px; color:var(--ink-soft); font-size:13.5px; }
+  footer{ margin-top:26px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:12px; }
+
+  @media (max-width:520px){
+    .wrap{ padding:20px 10px 50px; }
+    td.task-name{ max-width:140px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Planning &amp; Objectif</h1>
+    <p class="subtitle">Liste de tâches par jour : statut, priorité, personnes assignées et objectif. Chaque nouveau jour repart à zéro sur les statuts, mais l'historique des jours précédents reste consultable.</p>
+  </header>
+
+  <div class="team-objectif" id="teamObjectif" style="display:none"></div>
+
+  <div class="daybar" id="dayBar"></div>
+
+  <div class="filters">
+    <select id="filterPerson"><option value="">Toutes les personnes</option></select>
+    <select id="filterPriority">
+      <option value="">Toutes les couleurs</option>
+      <option value="rose">Rose</option>
+      <option value="peche">Pêche</option>
+      <option value="bleu">Bleu</option>
+      <option value="none">Sans couleur</option>
+    </select>
+    <select id="filterStatus">
+      <option value="">Tous les statuts</option>
+      <option value="fait">Fait</option>
+      <option value="afaire">À faire</option>
+      <option value="none">Non défini</option>
+    </select>
+  </div>
+
+  <div class="legend">
+    <span><i class="swatch" style="background:#F2D0CA"></i>Rose</span>
+    <span><i class="swatch" style="background:#FBE3C4"></i>Pêche</span>
+    <span><i class="swatch" style="background:#C9D8EB"></i>Bleu</span>
+  </div>
+
+  <div class="table-shell" id="tableShell">
+    <div class="empty-note">Chargement…</div>
+  </div>
+
+  <div class="summary" id="summaryByPerson" style="display:none">
+    <h2>Objectif par personne</h2>
+    <p class="hint">Le volume "fait" vient des tâches du jour ; l'objectif (à droite) est modifiable pour chaque personne.</p>
+    <div id="barsByPerson"></div>
+  </div>
+
+  <div class="toolbar" style="margin-top:22px;">
+    <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
+    <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
+    <button class="btn-ghost" id="btnClearDay">Vider les statuts de ce jour</button>
+    <button class="btn" id="btnToggleAdmin" style="margin-left:auto;">🔒 Mode superviseur</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <footer>
+    Données stockées côté Claude, visibles par toute personne utilisant cet outil.
+    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px;">Réinitialiser tout l'outil</button>
+  </footer>
+</div>
+
+<script>
+const PEOPLE_KEY = 'po:people';
+
+/* --- Supervisor lock for objectifs ---------------------------------------
+   Change ADMIN_PASSWORD below to whatever you want before publishing.
+   Note: this is a soft deterrent, not real security — anyone who reads the
+   page source (e.g. on GitHub) can see this password. It stops casual
+   colleagues from changing targets by accident, not a determined person. */
+const ADMIN_PASSWORD = 'Superviseur2026';
+let isAdmin = false;
+
+/* ==========================================================================
+   FIREBASE CONFIG — remplace les valeurs ci-dessous par celles de TON projet
+   Firebase (Console Firebase > Paramètres du projet > Tes applications > Web).
+   Ces valeurs ne sont pas secrètes : Firebase est prévu pour qu'elles soient
+   visibles côté client. La vraie protection se fait via les "Règles" de la
+   Realtime Database (voir les instructions fournies séparément).
+   ========================================================================== */
+const firebaseConfig = {
+  apiKey: "COLLE_TA_CLE_API_ICI",
+  authDomain: "TON-PROJET.firebaseapp.com",
+  databaseURL: "https://TON-PROJET-default-rtdb.firebaseio.com",
+  projectId: "TON-PROJET",
+  storageBucket: "TON-PROJET.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxxxx"
+};
+firebase.initializeApp(firebaseConfig);
+const fbDb = firebase.database();
+function dbPath(key){ return 'planningObjectif/' + String(key).replace(/[.#$\[\]\/]/g, '_'); }
+const INDEX_KEY = 'po:days-index';
+function dayKey(d){ return 'po:day:' + d; }
+const PERSON_PALETTE = ['#6FA8DC', '#A9564A', '#8E7CC3', '#D9A63C', '#4F9D6E', '#4A7FC1', '#C2708C', '#7FA0A6'];
+
+function cryptoId(){ return 'id-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setStatus(text, cls){ const el = document.getElementById('status'); el.textContent = text; el.className = 'status' + (cls ? ' '+cls : ''); }
+function personColor(personId){
+  const idx = people.findIndex(p => p.id === personId);
+  if(idx < 0) return null;
+  return PERSON_PALETTE[idx % PERSON_PALETTE.length];
+}
+function textColorFor(bg){ return '#ffffff'; }
+function fmtDday(iso){
+  const d = new Date(iso+'T00:00:00');
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
+function todayIso(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function addDaysIso(iso, n){
+  const d = new Date(iso+'T00:00:00');
+  d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function parseFrDate(str){
+  const m = str.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(!m) return null;
+  const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yyyy = m[3];
+  return yyyy+'-'+mm+'-'+dd;
+}
+function toFr(iso){
+  const [y,m,d] = iso.split('-');
+  return d+'/'+m+'/'+y;
+}
+
+let people = [];
+let daysIndex = [];
+let currentDate = null;
+let dayData = null; // {tasks: [...]}
+const dayCache = {};
+
+async function loadDayData(date, opts){
+  opts = opts || {};
+  if(!opts.force && dayCache[date]) return dayCache[date];
+  let d = await storageGet(dayKey(date));
+  if(!d || !d.tasks){
+    await new Promise(r => setTimeout(r, 350));
+    d = await storageGet(dayKey(date));
+  }
+  if(!d || !d.tasks){
+    await new Promise(r => setTimeout(r, 900));
+    d = await storageGet(dayKey(date));
+  }
+  if(!d || !d.tasks) d = {tasks: []};
+  dayCache[date] = d;
+  return d;
+}
+function setDayCache(date, data){ dayCache[date] = data; }
+
+function defaultPeople(){
+  return ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name:n, objectif: ''}));
+}
+
+function defaultTasksForDay(byName){
+  const raw = [
+    ['Vérif se mail', [], '', 53, 'rose'],
+    ['Décompte matin', [], 'afaire', null, 'rose'],
+    ['Décompte soir', [], 'afaire', null, 'rose'],
+    ['Tri', [], 'afaire', null, 'rose'],
+    ['Tableau de bord édition', ['Régis'], 'fait', 2, 'rose'],
+    ['Certificat à générer', [], 'fait', 0, 'rose'],
+    ['Workflow instantanéité Xpress', [], 'afaire', 9, 'rose'],
+    ['À reprendre sheet vérif', [], 'fait', 0, 'rose'],
+    ['Sheet "hors périmètre" matin', ['Ben'], 'fait', 7, 'rose'],
+    ['Anomalie à surveiller sheet vérif', [], 'fait', 0, 'rose'],
+    ['Lecture TA Lemoine', [], 'fait', 0, 'rose'],
+    ['Édition mail', ['Régis'], 'afaire', 17, 'rose'],
+    ['Échange client + échange résil J+1', ['Anaïs'], 'afaire', 40, 'rose'],
+    ['Affaire nouvelle', [], 'fait', 0, 'rose'],
+    ['Avenants (mail)', [], 'afaire', 49, 'rose'],
+    ['Avenant (workflow résil 2 - sheet planning)', ['Charlotte'], 'fait', 8, 'rose'],
+    ['Échange édition TN', [], 'afaire', 33, 'rose'],
+    ['Échange édition BPA', ['Régis'], 'fait', 2, 'rose'],
+    ['Échange avenant sur acquisition', ['Ben'], 'fait', 2, 'rose'],
+    ['Échange avenant modification banque', ['Ben'], 'afaire', 33, 'rose'],
+    ['Échange avenant acceptation banque', ['Clara'], 'fait', 7, 'peche'],
+    ['Échange résiliation', ['Ben'], 'afaire', 14, 'peche'],
+    ['Échange suivi substi', ['Charlotte'], 'fait', 6, 'peche'],
+    ['Échange modif RIB', ['Clara'], 'fait', 2, 'peche'],
+    ['Échange attestation', ['Clara'], 'fait', 4, 'peche'],
+    ['Échange autre', ['Clara'], 'afaire', 12, 'peche'],
+    ['Échange VIP', [], 'fait', 0, 'peche'],
+    ['Mail résil', ['Régis'], 'afaire', 14, 'peche'],
+    ['Mail prélèvement', ['Charlotte'], 'fait', 12, 'peche'],
+    ['Mail RIB', [], 'afaire', 10, 'peche'],
+    ['Impayé', ['Charlotte'], 'afaire', 140, 'peche'],
+    ['Mise en demeure', [], 'afaire', 35, 'peche'],
+    ['Mail mobilité', [], 'afaire', null, 'peche'],
+    ['Avis de corrections et domiciliations', [], 'afaire', null, 'peche'],
+    ['Chèque (bureau de Pierrick)', [], 'afaire', null, 'peche'],
+    ['Avenant en cours (Pierrick) - Avnt cloche', [], 'afaire', null, 'peche'],
+    ['Vérif chèque lutin', [], 'afaire', null, 'peche'],
+    ['Mail demande attestation', [], 'afaire', null, 'bleu'],
+    ['Mail NPAI', [], 'afaire', null, 'bleu'],
+    ['Mail retour IT', [], 'afaire', null, 'bleu'],
+  ];
+  return raw.map(([name, persons, status, objectif, priority]) => ({
+    id: cryptoId(), name,
+    personIds: persons.map(n => byName[n]).filter(Boolean),
+    status: status || '', priority: priority || '',
+    objectif: (objectif===null||objectif===undefined) ? '' : objectif
+  }));
+}
+
+async function storageGet(key){
+  try{
+    const snap = await fbDb.ref(dbPath(key)).get();
+    if(!snap.exists()) return null;
+    const raw = snap.val();
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+async function storageSet(key, val){
+  const attempts = [0, 400, 1200];
+  for(let i=0; i<attempts.length; i++){
+    if(attempts[i]) await new Promise(r => setTimeout(r, attempts[i]));
+    try{
+      await fbDb.ref(dbPath(key)).set(JSON.stringify(val));
+      return true;
+    } catch(e){ /* try again */ }
+  }
+  return false;
+}
+
+let dayListenerRef = null;
+let indexListenerAttached = false;
+let peopleListenerAttached = false;
+
+function attachDayListener(date){
+  if(dayListenerRef) dayListenerRef.off();
+  dayListenerRef = fbDb.ref(dbPath(dayKey(date)));
+  dayListenerRef.on('value', snap => {
+    if(!snap.exists()) return;
+    let fresh;
+    try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
+    if(!fresh || !fresh.tasks) return;
+    const active = document.activeElement;
+    const shell = document.getElementById('tableShell');
+    if(active && shell && shell.contains(active)) return; // don't disrupt someone mid-edit
+    if(JSON.stringify(fresh) === JSON.stringify(dayData)) return;
+    dayData = fresh;
+    setDayCache(date, dayData);
+    renderTable();
+  });
+}
+
+function attachIndexListener(){
+  if(indexListenerAttached) return;
+  indexListenerAttached = true;
+  fbDb.ref(dbPath(INDEX_KEY)).on('value', snap => {
+    if(!snap.exists()) return;
+    let fresh;
+    try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
+    if(!fresh || !Array.isArray(fresh)) return;
+    if(JSON.stringify(fresh) === JSON.stringify(daysIndex)) return;
+    daysIndex = fresh;
+    renderDayBar();
+  });
+}
+
+function attachPeopleListener(){
+  if(peopleListenerAttached) return;
+  peopleListenerAttached = true;
+  fbDb.ref(dbPath(PEOPLE_KEY)).on('value', snap => {
+    if(!snap.exists()) return;
+    let fresh;
+    try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
+    if(!fresh || !Array.isArray(fresh)) return;
+    const active = document.activeElement;
+    const shell = document.getElementById('tableShell');
+    if(active && shell && shell.contains(active)) return;
+    if(JSON.stringify(fresh) === JSON.stringify(people)) return;
+    people = fresh;
+    renderFilterOptions();
+    renderTable();
+  });
+}
+
+async function init(){
+  try{
+    people = await storageGet(PEOPLE_KEY);
+    if(!people){ people = defaultPeople(); await storageSet(PEOPLE_KEY, people); }
+
+    daysIndex = await storageGet(INDEX_KEY);
+    if(!daysIndex || !daysIndex.length){
+      const byName = {}; people.forEach(p => byName[p.name] = p.id);
+      const d0 = '2026-09-10';
+      const tasks = defaultTasksForDay(byName);
+      daysIndex = [d0];
+      currentDate = d0;
+      dayData = {tasks};
+      setDayCache(d0, dayData);
+      await storageSet(dayKey(d0), dayData);
+      await storageSet(INDEX_KEY, daysIndex);
+      attachDayListener(currentDate);
+      attachIndexListener();
+      attachPeopleListener();
+      renderAll();
+      return;
+    }
+    currentDate = daysIndex[daysIndex.length-1];
+    dayData = await loadDayData(currentDate);
+    attachDayListener(currentDate);
+    attachIndexListener();
+    attachPeopleListener();
+    renderAll();
+  } catch(err){
+    document.getElementById('tableShell').innerHTML =
+      '<div class="empty-note">Un problème est survenu au chargement. <button class="btn" id="btnRetryInit" style="margin-left:8px;">Réessayer</button></div>';
+    const btn = document.getElementById('btnRetryInit');
+    if(btn) btn.addEventListener('click', init);
+  }
+}
+
+async function persistDay(){
+  setStatus('Enregistrement…', 'saving');
+  const ok = await storageSet(dayKey(currentDate), dayData);
+  if(ok){
+    setDayCache(currentDate, dayData);
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+
+// Fetches the latest server version of the day and merges in just one local task's
+// current state, instead of overwriting the whole day. This means if a teammate
+// changed a different task in the meantime, that change is not lost.
+async function syncTask(taskId){
+  setStatus('Enregistrement…', 'saving');
+  const localTask = dayData.tasks.find(t => t.id === taskId);
+  let serverDay = await storageGet(dayKey(currentDate));
+  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
+  let found = false;
+  let mergedTasks = serverDay.tasks.map(t => {
+    if(t.id === taskId){ found = true; return localTask ? {...localTask} : t; }
+    return t;
+  });
+  if(!found && localTask) mergedTasks.push({...localTask});
+  const merged = {tasks: mergedTasks};
+  const ok = await storageSet(dayKey(currentDate), merged);
+  if(ok){
+    dayData = merged;
+    setDayCache(currentDate, dayData);
+    renderTable();
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+
+async function syncTaskRemoval(taskId){
+  setStatus('Enregistrement…', 'saving');
+  let serverDay = await storageGet(dayKey(currentDate));
+  if(!serverDay || !serverDay.tasks) serverDay = {tasks: dayData.tasks};
+  const merged = {tasks: serverDay.tasks.filter(t => t.id !== taskId)};
+  const ok = await storageSet(dayKey(currentDate), merged);
+  if(ok){
+    dayData = merged;
+    setDayCache(currentDate, dayData);
+    renderTable();
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+async function persistPeople(){ await storageSet(PEOPLE_KEY, people); }
+async function persistIndex(){ await storageSet(INDEX_KEY, daysIndex); }
+
+/* ---------- day bar ---------- */
+function renderDayBar(){
+  const bar = document.getElementById('dayBar');
+  const sorted = [...daysIndex].sort();
+  let html = '';
+  sorted.forEach(d => {
+    html += `<span class="day-pill ${d===currentDate?'active':''}" data-date="${d}">${fmtDday(d)}<button class="day-del" data-date-del="${d}" title="Supprimer ce jour">✕</button></span>`;
+  });
+  bar.innerHTML = html + '<button class="btn-newday" id="btnNewDay">+ Nouveau jour</button>';
+
+  bar.querySelectorAll('.day-pill').forEach(pill => {
+    pill.addEventListener('click', async (e) => {
+      if(e.target.classList.contains('day-del')) return;
+      const d = pill.dataset.date;
+      if(d === currentDate) return;
+      currentDate = d;
+      dayData = await loadDayData(currentDate);
+      attachDayListener(currentDate);
+      renderAll();
+    });
+  });
+  bar.querySelectorAll('.day-del').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const d = btn.dataset.dateDel;
+      if(daysIndex.length <= 1){ alert('Impossible de supprimer le dernier jour restant.'); return; }
+      if(!confirm(`Supprimer définitivement le jour du ${toFr(d)} ?`)) return;
+      daysIndex = daysIndex.filter(x => x !== d);
+      delete dayCache[d];
+      await persistIndex();
+      if(currentDate === d){
+        currentDate = daysIndex[daysIndex.length-1];
+        dayData = await loadDayData(currentDate);
+        attachDayListener(currentDate);
+      }
+      renderAll();
+    });
+  });
+  document.getElementById('btnNewDay').addEventListener('click', createNewDay);
+}
+
+async function createNewDay(){
+  const suggestion = toFr(addDaysIso(currentDate, 1));
+  const input = prompt('Date du nouveau jour (JJ/MM/AAAA) :', suggestion);
+  if(!input) return;
+  const iso = parseFrDate(input);
+  if(!iso){ alert('Format invalide. Utilise JJ/MM/AAAA.'); return; }
+  if(daysIndex.includes(iso)){
+    if(!confirm('Ce jour existe déjà. Voulez-vous l\u2019ouvrir ?')) return;
+    currentDate = iso;
+    dayData = await loadDayData(currentDate);
+    attachDayListener(currentDate);
+    renderAll();
+    return;
+  }
+  // Clone current day's tasks: keep name/priority, reset status to "À faire", clear objectif and personnes
+  const clonedTasks = dayData.tasks.map(t => ({...t, id: cryptoId(), status: 'afaire', objectif: '', personIds: []}));
+  daysIndex.push(iso);
+  daysIndex.sort();
+  currentDate = iso;
+  dayData = {tasks: clonedTasks};
+  setDayCache(currentDate, dayData);
+  attachDayListener(currentDate);
+  await persistIndex();
+  await persistDay();
+  renderAll();
+}
+
+async function clearDayStatuses(){
+  if(!confirm('Vider tous les statuts (Fait/À faire) de ce jour ? Les tâches, priorités et personnes restent.')) return;
+  dayData.tasks.forEach(t => { t.status = ''; });
+  renderAll();
+  await persistDay();
+}
+
+/* ---------- filters ---------- */
+function currentFilters(){
+  return {
+    person: document.getElementById('filterPerson').value,
+    priority: document.getElementById('filterPriority').value,
+    status: document.getElementById('filterStatus').value,
+  };
+}
+function taskMatchesFilters(t, f){
+  if(f.person){
+    if(f.person === '__none__'){ if(t.personIds.length) return false; }
+    else if(!t.personIds.includes(f.person)) return false;
+  }
+  if(f.priority){
+    if(f.priority === 'none'){ if(t.priority) return false; }
+    else if(t.priority !== f.priority) return false;
+  }
+  if(f.status){
+    if(f.status === 'none'){ if(t.status) return false; }
+    else if(t.status !== f.status) return false;
+  }
+  return true;
+}
+function renderFilterOptions(){
+  const fp = document.getElementById('filterPerson');
+  const current = fp.value;
+  fp.innerHTML = '<option value="">Toutes les personnes</option>' +
+    people.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if([...fp.options].some(o => o.value === current)) fp.value = current;
+}
+
+/* ---------- main render ---------- */
+function renderAll(){
+  renderDayBar();
+  renderFilterOptions();
+  renderTable();
+}
+
+function taskRowHtml(t){
+  const stCls = t.status === 'fait' ? 'st-fait' : (t.status === 'afaire' ? 'st-afaire' : 'st-empty');
+  const prCls = t.priority ? 'pr-'+t.priority : 'pr-empty';
+  const rowCls = t.priority ? 'row-'+t.priority : 'row-empty';
+  const primaryId = t.personIds[0] || '';
+  const helperId = t.personIds[1] || '';
+  function slotSelect(field, value, excludeId){
+    const opts = people.filter(p => p.id !== excludeId);
+    const c = value ? personColor(value) : null;
+    const style = c ? `background:${c};color:${textColorFor(c)};` : '';
+    return `<select class="person-slot-select ${value?'has-person':''}" data-slot="${field}" style="${style}">
+      <option value="">—</option>
+      ${opts.map(p => `<option value="${p.id}" ${p.id===value?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+    </select>`;
+  }
+
+  return `<tr class="task-row ${rowCls}" data-task="${t.id}">
+    <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" /></td>
+    <td class="person-slot-cell">${slotSelect('primary', primaryId, helperId)}</td>
+    <td class="person-slot-cell">${slotSelect('helper', helperId, primaryId)}</td>
+    <td class="status-cell"><select class="status-select ${stCls}" data-field="status">
+      <option value="" ${t.status===''?'selected':''}>—</option>
+      <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
+      <option value="afaire" ${t.status==='afaire'?'selected':''}>À faire</option>
+    </select></td>
+    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${isAdmin?'':'disabled title="Réservé au superviseur"'} /></td>
+    <td><button class="remove-x" data-action="remove-task" title="Supprimer">✕</button></td>
+  </tr>`;
+}
+
+function renderTable(){
+  const shell = document.getElementById('tableShell');
+  if(!dayData.tasks.length){
+    shell.innerHTML = '<div class="empty-note">Aucune tâche pour ce jour. <button class="btn" id="btnReloadDefaults" style="margin-left:8px;">Recharger la liste de tâches par défaut</button></div>';
+    document.getElementById('teamObjectif').style.display = 'none';
+    document.getElementById('summaryByPerson').style.display = 'none';
+    const btn = document.getElementById('btnReloadDefaults');
+    if(btn) btn.addEventListener('click', reloadDefaultsIntoCurrentDay);
+    return;
+  }
+  const f = currentFilters();
+  const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+
+  if(!visible.length){
+    shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
+  } else {
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Statut</th><th>Objectif</th><th></th></tr></thead><tbody>';
+    visible.forEach(t => { html += taskRowHtml(t); });
+    html += '</tbody></table>';
+    shell.innerHTML = html;
+
+    shell.querySelectorAll('tr[data-task]').forEach(row => {
+      const id = row.dataset.task;
+      row.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => onFieldChange(id, el)));
+      row.querySelector('[data-action="remove-task"]').addEventListener('click', () => removeTask(id));
+      row.querySelectorAll('.person-slot-select').forEach(sel => sel.addEventListener('change', () => onPersonSlotChange(id, sel.dataset.slot, sel.value)));
+    });
+  }
+
+  renderSummary();
+}
+
+async function onFieldChange(id, el){
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  const field = el.dataset.field;
+  let val = el.value;
+  if(field === 'objectif'){ val = val === '' ? '' : Number(val); }
+  task[field] = val;
+  if(field === 'status'){
+    el.className = 'status-select ' + (val==='fait'?'st-fait':(val==='afaire'?'st-afaire':'st-empty'));
+    const row = el.closest('tr.task-row');
+    if(val === 'fait' && row){
+      row.classList.remove('just-done'); void row.offsetWidth; row.classList.add('just-done');
+      const cell = el.closest('td');
+      if(cell && !cell.querySelector('.status-check')){
+        const check = document.createElement('span');
+        check.className = 'status-check';
+        check.textContent = '✓';
+        cell.appendChild(check);
+        setTimeout(() => { check.remove(); }, 900);
+      }
+    }
+  }
+  if(field === 'priority'){
+    el.className = 'priority-select ' + (val ? 'pr-'+val : 'pr-empty');
+    const row = el.closest('tr.task-row');
+    if(row) row.className = 'task-row ' + (val ? 'row-'+val : 'row-empty');
+  }
+  await syncTask(id);
+  renderSummary();
+}
+
+async function onPersonSlotChange(id, slot, value){
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  const primary = task.personIds[0] || '';
+  const helper = task.personIds[1] || '';
+  let next = slot === 'primary' ? [value, helper] : [primary, value];
+  next = next.filter(v => v); // drop empty slots
+  // guard against picking the same person twice
+  if(next.length === 2 && next[0] === next[1]) next = [next[slot === 'primary' ? 0 : 1]];
+  task.personIds = next;
+  renderTable();
+  await syncTask(id);
+}
+async function removeTask(id){
+  if(!confirm('Supprimer cette tâche (pour ce jour uniquement) ?')) return;
+  dayData.tasks = dayData.tasks.filter(t => t.id !== id);
+  renderTable();
+  await syncTaskRemoval(id);
+}
+
+function renderSummary(){
+  const f = currentFilters();
+  const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+
+  const totalObjectif = visible.reduce((s,t) => s + (Number(t.objectif)||0), 0);
+  const doneObjectif = visible.filter(t => t.status==='fait').reduce((s,t) => s + (Number(t.objectif)||0), 0);
+  const pct = totalObjectif > 0 ? Math.min(100, Math.round(doneObjectif/totalObjectif*100)) : 0;
+  const reached = totalObjectif > 0 && doneObjectif >= totalObjectif;
+
+  const box = document.getElementById('teamObjectif');
+  box.style.display = 'flex';
+  const r = 34, circ = 2*Math.PI*r;
+  const dash = circ * pct/100;
+  const ringColor = reached ? 'var(--teal)' : 'var(--ochre)';
+  box.innerHTML = `
+    <div class="today-ring">
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <circle cx="44" cy="44" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"/>
+        <circle cx="44" cy="44" r="${r}" fill="none" stroke="${ringColor}" stroke-width="9"
+          stroke-dasharray="${dash} ${circ}" stroke-linecap="round"
+          transform="rotate(-90 44 44)" style="transition:stroke-dasharray .4s ease;"/>
+        <text x="44" y="49" text-anchor="middle" class="ring-pct">${pct}%</text>
+      </svg>
+    </div>
+    <div class="today-info">
+      <div class="today-date">Aujourd'hui · ${toFr(currentDate)}</div>
+      <div class="today-nums"><b>${doneObjectif}</b> / ${totalObjectif} réalisé · <b>${visible.filter(t=>t.status==='fait').length}</b> / ${visible.length} tâches faites</div>
+      <div class="bar-track" style="width:220px;"><div class="bar-fill ${reached?'reached':''}" style="width:${pct}%"></div></div>
+    </div>
+  `;
+
+  const byPerson = {};
+  people.forEach(p => byPerson[p.id] = {id:p.id, name:p.name, assigned:0, done:0, target: (p.objectif===''||p.objectif==null)?'':Number(p.objectif), color:personColor(p.id)});
+  visible.forEach(t => {
+    t.personIds.forEach(pid => {
+      if(!byPerson[pid]) return;
+      byPerson[pid].assigned += Number(t.objectif)||0;
+      if(t.status==='fait') byPerson[pid].done += Number(t.objectif)||0;
+    });
+  });
+  const entries = Object.values(byPerson);
+  const rows = entries
+    .sort((a,b) => b.assigned - a.assigned)
+    .map(v => {
+      const hasTarget = v.target !== '' && v.target > 0;
+      const p2 = hasTarget ? Math.min(100, Math.round(v.done/v.target*100)) : 0;
+      const r2 = hasTarget && v.done >= v.target;
+      const dot = v.color ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${v.color};margin-right:6px;flex-shrink:0;"></i>` : '';
+      const targetInput = v.id ? `<input type="number" min="0" class="person-obj-input" data-person="${v.id}" value="${v.target}" placeholder="—" ${isAdmin?'':'disabled title="Réservé au superviseur"'} />` : `<span style="width:52px;display:inline-block;text-align:center;color:var(--ink-soft);">—</span>`;
+      return `<div class="bar-row">
+        <div class="bar-label">${dot}${escapeHtml(v.name)}</div>
+        <div class="bar-track"><div class="bar-fill ${r2?'reached':''}" style="width:${p2}%"></div></div>
+        <div class="bar-count">${v.done}${hasTarget ? ' / '+v.target : ''}</div>
+        ${targetInput}
+      </div>`;
+    }).join('');
+  document.getElementById('summaryByPerson').style.display = rows ? 'block' : 'none';
+  document.getElementById('barsByPerson').innerHTML = rows;
+  document.querySelectorAll('.person-obj-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const p = people.find(x => x.id === inp.dataset.person);
+      if(!p) return;
+      p.objectif = inp.value === '' ? '' : Math.max(0, Number(inp.value));
+      await persistPeople();
+      renderSummary();
+    });
+  });
+}
+
+/* ---------- add task / person ---------- */
+async function reloadDefaultsIntoCurrentDay(){
+  const byName = {}; people.forEach(p => byName[p.name] = p.id);
+  dayData = {tasks: defaultTasksForDay(byName)};
+  renderTable();
+  await persistDay();
+}
+
+async function addTask(){
+  const name = prompt('Nom de la tâche :');
+  if(!name || !name.trim()) return;
+  const newTask = {id: cryptoId(), name: name.trim(), personIds: [], status: '', priority: '', objectif: ''};
+  dayData.tasks.push(newTask);
+  renderTable();
+  await syncTask(newTask.id);
+}
+async function addPerson(){
+  const name = prompt('Nom de la personne à ajouter :');
+  if(!name || !name.trim()) return;
+  people.push({id: cryptoId(), name: name.trim(), objectif: ''});
+  renderFilterOptions();
+  renderTable();
+  await persistPeople();
+}
+
+async function resetAll(){
+  const confirmWord = prompt("Cette action efface TOUT pour TOUTE l'équipe (personnes, tous les jours). Tape RESET pour confirmer :");
+  if(confirmWord !== 'RESET') return;
+  Object.keys(dayCache).forEach(k => delete dayCache[k]);
+  const byName = {};
+  people = defaultPeople();
+  people.forEach(p => byName[p.name] = p.id);
+  const d0 = '2026-09-10';
+  daysIndex = [d0];
+  dayData = {tasks: defaultTasksForDay(byName)};
+  currentDate = d0;
+  setDayCache(d0, dayData);
+  attachDayListener(currentDate);
+  await persistPeople();
+  await persistIndex();
+  await persistDay();
+  renderAll();
+}
+
+document.getElementById('btnAddTask').addEventListener('click', addTask);
+document.getElementById('btnAddPerson').addEventListener('click', addPerson);
+document.getElementById('btnClearDay').addEventListener('click', clearDayStatuses);
+document.getElementById('btnResetAll').addEventListener('click', resetAll);
+document.getElementById('btnToggleAdmin').addEventListener('click', toggleAdmin);
+
+function toggleAdmin(){
+  if(isAdmin){
+    isAdmin = false;
+    setAdminButtonLabel();
+    renderTable();
+    renderSummary();
+    return;
+  }
+  const pw = prompt('Mot de passe superviseur :');
+  if(pw === null) return;
+  if(pw === ADMIN_PASSWORD){
+    isAdmin = true;
+    setAdminButtonLabel();
+    renderTable();
+    renderSummary();
+  } else {
+    alert('Mot de passe incorrect.');
+  }
+}
+function setAdminButtonLabel(){
+  const btn = document.getElementById('btnToggleAdmin');
+  if(!btn) return;
+  btn.textContent = isAdmin ? '🔓 Verrouiller les objectifs' : '🔒 Mode superviseur';
+}
+document.getElementById('filterPerson').addEventListener('change', renderTable);
+document.getElementById('filterPriority').addEventListener('change', renderTable);
+document.getElementById('filterStatus').addEventListener('change', renderTable);
+
+init();
+</script>
+</body>
+</html>
