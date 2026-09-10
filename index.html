@@ -130,9 +130,23 @@
   select.priority-select.pr-bleu{ color:#3C5C82; }
   select.priority-select.pr-empty{ color:var(--ink-soft); }
 
-  td.task-name{ padding:10px; font-weight:500; max-width:250px; }
-  td.task-name input{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); text-transform:uppercase; }
+  td.task-name{ padding:10px; font-weight:500; max-width:250px; display:flex; align-items:center; gap:6px; }
+  td.task-name input{ flex:1; min-width:0; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); text-transform:uppercase; }
   td.task-name input:focus{ outline:1px solid var(--violet); border-radius:2px; }
+  .multimode-toggle{
+    flex-shrink:0; background:none; border:1px solid var(--line-strong); border-radius:4px;
+    width:22px; height:22px; font-size:13px; line-height:1; cursor:pointer; color:var(--ink-soft);
+    display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  .multimode-toggle:hover{ border-color:var(--violet); color:var(--violet); }
+
+  td.checklist-cell{ padding:6px; text-align:left; }
+  .checklist-group{ display:flex; flex-wrap:wrap; gap:6px; }
+  .checklist-item{
+    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:12px;
+    padding:4px 10px 4px 8px; font-size:12px; font-weight:600; color:var(--ink-soft); background:#fff; cursor:pointer;
+  }
+  .checklist-item input{ margin:0; cursor:pointer; }
 
   td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
   select.person-slot-select{
@@ -411,7 +425,8 @@ function defaultTasksForDay(byName){
     id: cryptoId(), name,
     personIds: persons.map(n => byName[n]).filter(Boolean),
     status: status || '', priority: priority || '',
-    objectif: (objectif===null||objectif===undefined) ? '' : objectif
+    objectif: (objectif===null||objectif===undefined) ? '' : objectif,
+    multiMode: name === 'Vérif se mail'
   }));
 }
 
@@ -449,7 +464,7 @@ function attachDayListener(date){
     if(!fresh || !fresh.tasks) return;
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
-    if(active && shell && shell.contains(active)) return; // don't disrupt someone mid-edit
+    if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt someone mid-typing
     if(JSON.stringify(fresh) === JSON.stringify(dayData)) return;
     dayData = fresh;
     setDayCache(date, dayData);
@@ -481,7 +496,7 @@ function attachPeopleListener(){
     if(!fresh || !Array.isArray(fresh)) return;
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
-    if(active && shell && shell.contains(active)) return;
+    if(active && active.tagName === 'INPUT' && active.type === 'text') return;
     if(JSON.stringify(fresh) === JSON.stringify(people)) return;
     people = fresh;
     renderFilterOptions();
@@ -717,10 +732,26 @@ function taskRowHtml(t){
     </select>`;
   }
 
+  let peopleCells;
+  if(t.multiMode){
+    const boxes = people.map(p => {
+      const checked = t.personIds.includes(p.id);
+      const c = personColor(p.id);
+      const style = `background:${c};color:${textColorFor(c)};opacity:${checked?'1':'.5'};`;
+      return `<label class="checklist-item" style="${style}">
+        <input type="checkbox" data-person="${p.id}" ${checked?'checked':''} />
+        <span>${checked?'✓ ':''}${escapeHtml(p.name)}</span>
+      </label>`;
+    }).join('');
+    peopleCells = `<td class="person-slot-cell checklist-cell" colspan="2"><div class="checklist-group">${boxes}</div></td>`;
+  } else {
+    peopleCells = `<td class="person-slot-cell">${slotSelect('primary', primaryId, helperId)}</td>
+    <td class="person-slot-cell">${slotSelect('helper', helperId, primaryId)}</td>`;
+  }
+
   return `<tr class="task-row ${rowCls}" data-task="${t.id}">
     <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" /></td>
-    <td class="person-slot-cell">${slotSelect('primary', primaryId, helperId)}</td>
-    <td class="person-slot-cell">${slotSelect('helper', helperId, primaryId)}</td>
+    ${peopleCells}
     <td class="status-cell"><select class="status-select ${stCls}" data-field="status">
       <option value="" ${t.status===''?'selected':''}>—</option>
       <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
@@ -757,6 +788,7 @@ function renderTable(){
       row.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => onFieldChange(id, el)));
       row.querySelector('[data-action="remove-task"]').addEventListener('click', () => removeTask(id));
       row.querySelectorAll('.person-slot-select').forEach(sel => sel.addEventListener('change', () => onPersonSlotChange(id, sel.dataset.slot, sel.value)));
+      row.querySelectorAll('.checklist-item input').forEach(cb => cb.addEventListener('change', () => onChecklistToggle(id, cb.dataset.person, cb.checked)));
     });
   }
 
@@ -804,6 +836,17 @@ async function onPersonSlotChange(id, slot, value){
   // guard against picking the same person twice
   if(next.length === 2 && next[0] === next[1]) next = [next[slot === 'primary' ? 0 : 1]];
   task.personIds = next;
+  renderTable();
+  await syncTask(id);
+}
+async function onChecklistToggle(id, personId, checked){
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  if(checked){
+    if(!task.personIds.includes(personId)) task.personIds.push(personId);
+  } else {
+    task.personIds = task.personIds.filter(pid => pid !== personId);
+  }
   renderTable();
   await syncTask(id);
 }
@@ -894,7 +937,7 @@ async function reloadDefaultsIntoCurrentDay(){
 async function addTask(){
   const name = prompt('Nom de la tâche :');
   if(!name || !name.trim()) return;
-  const newTask = {id: cryptoId(), name: name.trim(), personIds: [], status: '', priority: '', objectif: ''};
+  const newTask = {id: cryptoId(), name: name.trim(), personIds: [], status: '', priority: '', objectif: '', multiMode: false};
   dayData.tasks.push(newTask);
   renderTable();
   await syncTask(newTask.id);
