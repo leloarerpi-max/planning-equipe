@@ -131,7 +131,7 @@
   select.priority-select.pr-empty{ color:var(--ink-soft); }
 
   td.task-name{ padding:10px; font-weight:500; max-width:250px; }
-  td.task-name input{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); }
+  td.task-name input{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); text-transform:uppercase; }
   td.task-name input:focus{ outline:1px solid var(--violet); border-radius:2px; }
 
   td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
@@ -170,6 +170,18 @@
   .summary{ margin-top:28px; }
   .summary h2{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:19px; margin:0 0 4px; }
   .summary .hint{ color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; }
+
+  .summary-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .stat-card{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px 16px; }
+  .stat-card .stat-name{ font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+  .stat-card .stat-value{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:26px; }
+
+  table.stats-matrix{ border-collapse:collapse; width:100%; font-size:12.5px; min-width:600px; }
+  table.stats-matrix th, table.stats-matrix td{ border:1px solid var(--line); padding:6px 8px; text-align:center; white-space:nowrap; }
+  table.stats-matrix thead th{ position:sticky; top:0; background:var(--panel); z-index:2; font-weight:700; }
+  table.stats-matrix td.stats-task-name{ text-align:left; text-transform:uppercase; font-weight:500; position:sticky; left:0; background:var(--panel); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  table.stats-matrix td.stats-count-0{ color:var(--line-strong); }
+  table.stats-matrix td.stats-count-hi{ background:var(--teal-bg); color:var(--teal); font-weight:700; }
   .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12.5px; }
   .bar-row .bar-label{ width:130px; flex-shrink:0; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; }
   .bar-row .bar-track{ flex:1; margin-bottom:0; }
@@ -238,13 +250,22 @@
     <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
     <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
     <button class="btn-ghost" id="btnClearDay">Vider les statuts de ce jour</button>
+    <button class="btn" id="btnStats">📊 Statistiques</button>
     <button class="btn" id="btnToggleAdmin" style="margin-left:auto;">🔒 Mode superviseur</button>
   </div>
   <div class="status" id="status"></div>
 
+  <div class="summary" id="statsPanel" style="display:none;">
+    <h2>Statistiques — répartition des tâches</h2>
+    <p class="hint">Sur tout l'historique disponible : nombre de fois où chaque tâche a été marquée "Fait" par chaque personne.</p>
+    <div id="statsLoading" class="empty-note" style="display:none;">Calcul en cours…</div>
+    <div id="statsTotals" class="summary-grid" style="margin-bottom:20px;"></div>
+    <div class="table-shell" id="statsTableShell" style="overflow:auto; max-height:460px;"></div>
+  </div>
+
   <footer>
     Données stockées côté Claude, visibles par toute personne utilisant cet outil.
-    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px;">Réinitialiser tout l'outil</button>
+    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px; opacity:.45;" title="Réservé au superviseur">Réinitialiser tout l'outil</button>
   </footer>
 </div>
 
@@ -568,7 +589,8 @@ function renderDayBar(){
   const sorted = [...daysIndex].sort();
   let html = '';
   sorted.forEach(d => {
-    html += `<span class="day-pill ${d===currentDate?'active':''}" data-date="${d}">${fmtDday(d)}<button class="day-del" data-date-del="${d}" title="Supprimer ce jour">✕</button></span>`;
+    const delBtn = isAdmin ? `<button class="day-del" data-date-del="${d}" title="Supprimer ce jour">✕</button>` : '';
+    html += `<span class="day-pill ${d===currentDate?'active':''}" data-date="${d}">${fmtDday(d)}${delBtn}</span>`;
   });
   bar.innerHTML = html + '<button class="btn-newday" id="btnNewDay">+ Nouveau jour</button>';
 
@@ -586,6 +608,10 @@ function renderDayBar(){
   bar.querySelectorAll('.day-del').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      if(!isAdmin){
+        alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+        return;
+      }
       const d = btn.dataset.dateDel;
       if(daysIndex.length <= 1){ alert('Impossible de supprimer le dernier jour restant.'); return; }
       if(!confirm(`Supprimer définitivement le jour du ${toFr(d)} ?`)) return;
@@ -700,7 +726,7 @@ function taskRowHtml(t){
       <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
       <option value="afaire" ${t.status==='afaire'?'selected':''}>À faire</option>
     </select></td>
-    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${isAdmin?'':'disabled title="Réservé au superviseur"'} /></td>
+    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" /></td>
     <td><button class="remove-x" data-action="remove-task" title="Supprimer">✕</button></td>
   </tr>`;
 }
@@ -721,7 +747,7 @@ function renderTable(){
   if(!visible.length){
     shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
   } else {
-    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Statut</th><th>Objectif</th><th></th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
     visible.forEach(t => { html += taskRowHtml(t); });
     html += '</tbody></table>';
     shell.innerHTML = html;
@@ -883,6 +909,10 @@ async function addPerson(){
 }
 
 async function resetAll(){
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
   const confirmWord = prompt("Cette action efface TOUT pour TOUTE l'équipe (personnes, tous les jours). Tape RESET pour confirmer :");
   if(confirmWord !== 'RESET') return;
   Object.keys(dayCache).forEach(k => delete dayCache[k]);
@@ -911,6 +941,7 @@ function toggleAdmin(){
   if(isAdmin){
     isAdmin = false;
     setAdminButtonLabel();
+    renderDayBar();
     renderTable();
     renderSummary();
     return;
@@ -920,6 +951,7 @@ function toggleAdmin(){
   if(pw === ADMIN_PASSWORD){
     isAdmin = true;
     setAdminButtonLabel();
+    renderDayBar();
     renderTable();
     renderSummary();
   } else {
@@ -928,12 +960,96 @@ function toggleAdmin(){
 }
 function setAdminButtonLabel(){
   const btn = document.getElementById('btnToggleAdmin');
-  if(!btn) return;
-  btn.textContent = isAdmin ? '🔓 Verrouiller les objectifs' : '🔒 Mode superviseur';
+  if(btn) btn.textContent = isAdmin ? '🔓 Verrouiller les objectifs' : '🔒 Mode superviseur';
+  const resetBtn = document.getElementById('btnResetAll');
+  if(resetBtn){
+    resetBtn.style.opacity = isAdmin ? '1' : '.45';
+    resetBtn.title = isAdmin ? '' : 'Réservé au superviseur';
+  }
 }
 document.getElementById('filterPerson').addEventListener('change', renderTable);
 document.getElementById('filterPriority').addEventListener('change', renderTable);
 document.getElementById('filterStatus').addEventListener('change', renderTable);
+
+document.getElementById('btnStats').addEventListener('click', toggleStatsPanel);
+let statsOpen = false;
+async function toggleStatsPanel(){
+  const panel = document.getElementById('statsPanel');
+  statsOpen = !statsOpen;
+  panel.style.display = statsOpen ? 'block' : 'none';
+  if(statsOpen) await computeAndRenderStats();
+}
+
+async function computeAndRenderStats(){
+  const loading = document.getElementById('statsLoading');
+  const totalsEl = document.getElementById('statsTotals');
+  const tableShell = document.getElementById('statsTableShell');
+  loading.style.display = 'block';
+  totalsEl.innerHTML = '';
+  tableShell.innerHTML = '';
+
+  // Load every day (cache avoids re-fetching days already seen this session)
+  const allDays = await Promise.all(daysIndex.map(d => loadDayData(d)));
+
+  const perPersonTotal = {}; // personId -> completed count
+  const perPersonTask = {};  // personId -> { taskName -> count }
+  const taskNamesSet = new Set();
+  people.forEach(p => { perPersonTotal[p.id] = 0; perPersonTask[p.id] = {}; });
+
+  allDays.forEach(day => {
+    (day.tasks || []).forEach(t => {
+      const nameKey = (t.name || '').trim().toUpperCase();
+      if(!nameKey) return;
+      taskNamesSet.add(nameKey);
+      if(t.status === 'fait'){
+        (t.personIds || []).forEach(pid => {
+          if(!(pid in perPersonTotal)) return; // person no longer exists
+          perPersonTotal[pid] += 1;
+          perPersonTask[pid][nameKey] = (perPersonTask[pid][nameKey] || 0) + 1;
+        });
+      }
+    });
+  });
+
+  loading.style.display = 'none';
+
+  // Totals cards
+  const totalsSorted = people.map(p => ({p, count: perPersonTotal[p.id] || 0})).sort((a,b) => b.count - a.count);
+  totalsEl.innerHTML = totalsSorted.map(({p, count}) => {
+    const c = personColor(p.id);
+    const dot = c ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};"></i>` : '';
+    return `<div class="stat-card"><div class="stat-name">${dot}${escapeHtml(p.name)}</div><div class="stat-value">${count}</div></div>`;
+  }).join('') || '<div class="empty-note">Aucune donnée pour l\'instant.</div>';
+
+  // Matrix: tasks x people
+  const taskNames = [...taskNamesSet].sort((a,b) => {
+    const totalA = people.reduce((s,p) => s + (perPersonTask[p.id][a]||0), 0);
+    const totalB = people.reduce((s,p) => s + (perPersonTask[p.id][b]||0), 0);
+    return totalB - totalA;
+  });
+
+  if(!taskNames.length || !people.length){
+    tableShell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>';
+    return;
+  }
+
+  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Tâche</th>';
+  people.forEach(p => { html += `<th>${escapeHtml(p.name)}</th>`; });
+  html += '</tr></thead><tbody>';
+  taskNames.forEach(name => {
+    html += `<tr><td class="stats-task-name">${escapeHtml(name)}</td>`;
+    const rowCounts = people.map(p => perPersonTask[p.id][name] || 0);
+    const rowMax = Math.max(...rowCounts, 0);
+    people.forEach((p, i) => {
+      const count = rowCounts[i];
+      const cls = count === 0 ? 'stats-count-0' : (count === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+      html += `<td class="${cls}">${count}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  tableShell.innerHTML = html;
+}
 
 init();
 </script>
