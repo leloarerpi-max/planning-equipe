@@ -1111,6 +1111,7 @@ function renderSummary(){
     });
   });
   const entries = Object.values(byPerson);
+  lastByPersonStats = byPerson;
   const rows = entries
     .sort((a,b) => b.assigned - a.assigned)
     .map(v => {
@@ -1120,7 +1121,7 @@ function renderSummary(){
       const dot = v.color ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${v.color};margin-right:6px;flex-shrink:0;"></i>` : '';
       const targetInput = v.id ? `<input type="number" min="0" class="person-obj-input" data-person="${v.id}" value="${v.target}" placeholder="—" ${isAdmin?'':'disabled title="Réservé au superviseur"'} />` : `<span style="width:52px;display:inline-block;text-align:center;color:var(--ink-soft);">—</span>`;
       const doneDisplay = Number.isInteger(v.done) ? v.done : v.done.toFixed(1);
-      return `<div class="bar-row">
+      return `<div class="bar-row" data-person-row="${v.id||''}">
         <div class="bar-label">${dot}${escapeHtml(v.name)}</div>
         <div class="bar-track"><div class="bar-fill ${r2?'reached':''}" style="width:${p2}%"></div></div>
         <div class="bar-count">${doneDisplay}${hasTarget ? ' / '+v.target : ''}</div>
@@ -1135,8 +1136,45 @@ function renderSummary(){
       if(!p) return;
       p.objectif = inp.value === '' ? '' : Math.max(0, Number(inp.value));
       await persistPeople();
-      renderSummary();
+      updatePersonBarRowInPlace(p.id);
     });
+  });
+  wirePersonObjNav();
+}
+
+let lastByPersonStats = {};
+function updatePersonBarRowInPlace(personId){
+  const p = people.find(x => x.id === personId);
+  const stats = lastByPersonStats[personId];
+  if(!p || !stats) return;
+  const target = (p.objectif===''||p.objectif==null) ? '' : Number(p.objectif);
+  stats.target = target;
+  const hasTarget = target !== '' && target > 0;
+  const p2 = hasTarget ? Math.min(100, Math.round(stats.done/target*100)) : 0;
+  const reached = hasTarget && stats.done >= target;
+  const doneDisplay = Number.isInteger(stats.done) ? stats.done : stats.done.toFixed(1);
+  const row = document.querySelector(`.bar-row[data-person-row="${personId}"]`);
+  if(!row) return;
+  const fill = row.querySelector('.bar-fill');
+  const count = row.querySelector('.bar-count');
+  if(fill){ fill.style.width = p2 + '%'; fill.className = 'bar-fill ' + (reached ? 'reached' : ''); }
+  if(count){ count.textContent = doneDisplay + (hasTarget ? ' / ' + target : ''); }
+}
+function wirePersonObjNav(){
+  const inputs = Array.from(document.querySelectorAll('.person-obj-input'));
+  inputs.forEach((inp, idx) => {
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'ArrowDown' || e.key === 'Enter'){
+        e.preventDefault();
+        const next = inputs[idx+1];
+        if(next){ next.focus(); next.select(); }
+      } else if(e.key === 'ArrowUp'){
+        e.preventDefault();
+        const prev = inputs[idx-1];
+        if(prev){ prev.focus(); prev.select(); }
+      }
+    });
+    inp.addEventListener('focus', () => inp.select());
   });
 }
 
