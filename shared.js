@@ -40,6 +40,17 @@ function ensureMyName(){
   }
   return myName || 'Quelqu\u2019un';
 }
+function changeMyName(){
+  const n = prompt('Ton prénom (affiché dans le journal des modifications) :', myName || '');
+  if(n === null) return;
+  if(n.trim()){
+    myName = n.trim();
+    try{ localStorage.setItem('po-my-name', myName); } catch(e){}
+    alert(`C'est noté, tu apparaîtras comme "${myName}" dans le journal à partir de maintenant.`);
+  }
+}
+const btnChangeMyName = document.getElementById('btnChangeMyName');
+if(btnChangeMyName) btnChangeMyName.addEventListener('click', changeMyName);
 async function logChange(text){
   try{
     const name = myName || 'Quelqu\u2019un';
