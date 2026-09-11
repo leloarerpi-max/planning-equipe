@@ -503,7 +503,7 @@ function taskRowHtml(t){
       <option value="afaire" ${t.status==='afaire'?'selected':''}>À faire</option>
     </select></td>
     <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${dis} /></td>
-    <td>${editable ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
+    <td>${(editable && isAdmin) ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
   </tr>`;
 }
 
@@ -656,6 +656,10 @@ async function onChecklistToggle(id, personId, checked){
 }
 async function removeTask(id){
   if(!isDayEditable()) return;
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
   const task = dayData.tasks.find(t => t.id === id);
   if(!task) return;
   const taskCopy = {...task};
