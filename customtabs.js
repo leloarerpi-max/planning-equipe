@@ -38,6 +38,20 @@ function mealPersonColor(data, personId){
 function defaultChecklistData(){
   return { type: 'checklist', rows: [] };
 }
+function defaultPhonePlanningData(){
+  return {
+    type: 'phoneplanning',
+    people: ['Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name: n})),
+    slots: ['09h-10h','10h-11h','11h-12h','12h-13h','13h-14h','14h-15h','15h-16h','16h-17h'].map(l => ({id: cryptoId(), label: l})),
+    days: [],
+    shifts: {}
+  };
+}
+function phonePersonColorByName(d, name){
+  const idx = d.people.findIndex(p => p.name.trim().toLowerCase() === (name||'').trim().toLowerCase());
+  if(idx < 0) return null;
+  return MEAL_PALETTE[idx % MEAL_PALETTE.length];
+}
 
 async function initCustomTabs(){
   customTabs = await storageGet(CUSTOMTABS_INDEX_KEY);
@@ -109,7 +123,7 @@ async function switchAppTab(tabId){
   document.getElementById('customTabTitle').textContent = tabMeta ? tabMeta.name : 'Onglet';
   document.getElementById('customTableShell').innerHTML = '<div class="empty-note">Chargement…</div>';
   activeCustomTabData = await storageGet(customTabKey(tabId));
-  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows)){
+  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows && !activeCustomTabData.slots)){
     activeCustomTabData = defaultCustomTabData();
   }
   normalizeMealDataOnLoad(activeCustomTabData);
@@ -122,7 +136,8 @@ function updateCustomToolbarForType(){
   const type = activeCustomTabData && activeCustomTabData.type;
   const isMeal = type === 'mealplanning';
   const isChecklist = type === 'checklist';
-  const isGeneric = !isMeal && !isChecklist;
+  const isPhone = type === 'phoneplanning';
+  const isGeneric = !isMeal && !isChecklist && !isPhone;
   document.getElementById('btnAddColumn').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddRow').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddMealDate').style.display = isMeal ? '' : 'none';
@@ -133,6 +148,12 @@ function updateCustomToolbarForType(){
   document.getElementById('btnAddChecklistRow').style.display = isChecklist ? '' : 'none';
   document.getElementById('btnImportExcel').style.display = isChecklist ? '' : 'none';
   document.getElementById('btnConvertChecklist').style.display = isGeneric ? '' : 'none';
+  document.getElementById('btnAddPhoneDate').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnAddPhoneMonth').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnAddPhoneSlot').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnAddPhonePerson').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnSavePhoneTemplate').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnConvertPhonePlanning').style.display = isGeneric ? '' : 'none';
 }
 
 function attachCustomTabListener(tabId){
@@ -142,7 +163,7 @@ function attachCustomTabListener(tabId){
     if(!snap.exists()) return;
     let fresh;
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
-    if(!fresh || (!fresh.columns && !fresh.people && !fresh.rows)) return;
+    if(!fresh || (!fresh.columns && !fresh.people && !fresh.rows && !fresh.slots)) return;
     normalizeMealDataOnLoad(fresh);
     const active = document.activeElement;
     if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt typing
@@ -168,6 +189,10 @@ function renderCustomTable(){
   }
   if(activeCustomTabData && activeCustomTabData.type === 'checklist'){
     renderChecklistTable();
+    return;
+  }
+  if(activeCustomTabData && activeCustomTabData.type === 'phoneplanning'){
+    renderPhonePlanningGrid();
     return;
   }
   const shell = document.getElementById('customTableShell');
@@ -676,6 +701,238 @@ document.getElementById('btnConvertChecklist').addEventListener('click', async (
   }
   if(!confirm('Transformer cet onglet en liste "Avenants WF" (Information + case Fait) ? Le contenu actuel de ce tableau sera remplacé.')) return;
   activeCustomTabData = defaultChecklistData();
+  renderCustomTable();
+  updateCustomToolbarForType();
+  await persistCustomTab();
+});
+
+/* ---------- Planning Tel (créneaux horaires en colonnes) ---------- */
+function fmtPhoneDate(iso){
+  const d = new Date(iso+'T00:00:00');
+  const wd = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][d.getDay()];
+  return { wd, ddmm: String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0') };
+}
+function phoneWeekLabel(iso){
+  const d = new Date(iso+'T00:00:00');
+  const day = d.getDay() === 0 ? 7 : d.getDay();
+  const monday = new Date(d); monday.setDate(d.getDate() - (day-1));
+  return monday.getFullYear()+'-'+String(monday.getMonth()+1).padStart(2,'0')+'-'+String(monday.getDate()).padStart(2,'0');
+}
+function renderPhonePlanningGrid(){
+  const shell = document.getElementById('customTableShell');
+  const d = activeCustomTabData;
+  if(!d.slots.length){
+    shell.innerHTML = '<div class="empty-note">Aucun créneau. Clique sur "+ Ajouter un créneau".</div>';
+    return;
+  }
+  const sortedDays = [...d.days].sort((a,b) => a.date.localeCompare(b.date));
+
+  let html = '<table class="phone-table"><thead><tr><th style="text-align:center;">Date</th>';
+  d.slots.forEach(slot => {
+    html += `<th><div class="phone-slot-head"><input type="text" value="${escapeHtml(slot.label)}" data-slotid="${slot.id}" class="phone-slot-input" />
+      ${d.slots.length > 1 ? `<button class="phone-slot-del" data-slotdel="${slot.id}" title="Supprimer ce créneau">✕</button>` : ''}
+    </div></th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  if(!sortedDays.length){
+    html += `<tr><td colspan="${d.slots.length+1}" class="empty-note">Aucune date. Clique sur "+ Ajouter une date".</td></tr>`;
+  } else {
+    let lastWeek = null;
+    const today = todayIso();
+    sortedDays.forEach(day => {
+      const wk = phoneWeekLabel(day.date);
+      if(wk !== lastWeek){
+        html += `<tr class="phone-week-sep"><td colspan="${d.slots.length+1}">Semaine du ${fmtPhoneDate(wk).ddmm}</td></tr>`;
+        lastWeek = wk;
+      }
+      const {wd, ddmm} = fmtPhoneDate(day.date);
+      const isToday = day.date === today;
+      html += `<tr class="${isToday ? 'phone-today-row' : ''}"><td class="phone-date-cell"><div class="row-inner"><span>${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span>${isToday ? '<span class="phone-today-badge">AUJOURD\u2019HUI</span>' : ''}</span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette date">✕</button></div></td>`;
+      d.slots.forEach(slot => {
+        const key = day.id+'|'+slot.id;
+        const val = (d.shifts && d.shifts[key]) || '';
+        const c = val ? phonePersonColorByName(d, val) : null;
+        const style = c ? `background:${c};color:#fff;` : '';
+        html += `<td class="phone-cell" style="${style}"><input type="text" value="${escapeHtml(val)}" data-day="${day.id}" data-slot="${slot.id}" placeholder="—" list="phonePeopleList" /></td>`;
+      });
+      html += '</tr>';
+    });
+  }
+  html += '</tbody></table>';
+  html += `<datalist id="phonePeopleList">${d.people.map(p => `<option value="${escapeHtml(p.name)}">`).join('')}</datalist>`;
+  shell.innerHTML = html;
+
+  shell.querySelectorAll('td.phone-cell input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      d.shifts = d.shifts || {};
+      const key = inp.dataset.day + '|' + inp.dataset.slot;
+      const val = inp.value.trim();
+      if(val === ''){ delete d.shifts[key]; } else { d.shifts[key] = val; }
+      const c = val ? phonePersonColorByName(d, val) : null;
+      inp.closest('td').style.cssText = c ? `background:${c};color:#fff;` : '';
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('.phone-slot-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const slot = d.slots.find(s => s.id === inp.dataset.slotid);
+      if(!slot) return;
+      slot.label = inp.value;
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-slotdel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const slotId = btn.dataset.slotdel;
+      const removedSlot = d.slots.find(s => s.id === slotId);
+      d.slots = d.slots.filter(s => s.id !== slotId);
+      Object.keys(d.shifts || {}).forEach(k => { if(k.endsWith('|'+slotId)) delete d.shifts[k]; });
+      renderPhonePlanningGrid();
+      await persistCustomTab();
+      if(removedSlot){
+        showUndoToast(`Créneau "${removedSlot.label}" supprimé`, async () => {
+          if(!d.slots.some(s => s.id === slotId)) d.slots.push(removedSlot);
+          renderPhonePlanningGrid();
+          await persistCustomTab();
+        });
+      }
+    });
+  });
+  shell.querySelectorAll('[data-daydel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dayId = btn.dataset.daydel;
+      const removedDay = d.days.find(x => x.id === dayId);
+      if(!removedDay) return;
+      d.days = d.days.filter(x => x.id !== dayId);
+      renderPhonePlanningGrid();
+      await persistCustomTab();
+      showUndoToast(`Date du ${fmtPhoneDate(removedDay.date).ddmm} supprimée`, async () => {
+        if(!d.days.some(x => x.id === dayId)) d.days.push(removedDay);
+        renderPhonePlanningGrid();
+        await persistCustomTab();
+      });
+    });
+  });
+  wirePhoneNav(shell);
+}
+function wirePhoneNav(shell){
+  const inputs = Array.from(shell.querySelectorAll('td.phone-cell input'));
+  inputs.forEach((inp, idx) => {
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'ArrowDown' || e.key === 'Enter'){
+        e.preventDefault();
+        const next = inputs[idx+1];
+        if(next){ next.focus(); next.select(); }
+      } else if(e.key === 'ArrowUp'){
+        e.preventDefault();
+        const prev = inputs[idx-1];
+        if(prev){ prev.focus(); prev.select(); }
+      }
+    });
+    inp.addEventListener('focus', () => inp.select());
+  });
+}
+
+document.getElementById('btnAddPhoneDate').addEventListener('click', async () => {
+  const input = prompt('Date à ajouter (JJ/MM/AAAA) :');
+  if(!input) return;
+  const m = input.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(!m){ alert('Format invalide. Utilise JJ/MM/AAAA.'); return; }
+  const iso = m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  const d = activeCustomTabData;
+  if(d.days.some(x => x.date === iso)){ alert('Cette date existe déjà.'); return; }
+  d.days.push({id: cryptoId(), date: iso});
+  renderPhonePlanningGrid();
+  await persistCustomTab();
+});
+document.getElementById('btnAddPhoneMonth').addEventListener('click', async () => {
+  const now = new Date();
+  const suggestion = String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear();
+  const input = prompt('Mois à remplir (MM/AAAA) :', suggestion);
+  if(!input) return;
+  const m = input.trim().match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if(!m){ alert('Format invalide. Utilise MM/AAAA (ex: 10/2026).'); return; }
+  const month = parseInt(m[1], 10) - 1;
+  const year = parseInt(m[2], 10);
+  if(month < 0 || month > 11){ alert('Mois invalide (01 à 12).'); return; }
+
+  const d = activeCustomTabData;
+  const existing = new Set(d.days.map(x => x.date));
+  const added = [];
+  const cursor = new Date(year, month, 1);
+  while(cursor.getMonth() === month){
+    const day = cursor.getDay();
+    if(day >= 1 && day <= 5){
+      const iso = cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0')+'-'+String(cursor.getDate()).padStart(2,'0');
+      if(!existing.has(iso)){ d.days.push({id: cryptoId(), date: iso}); added.push(iso); }
+    }
+    cursor.setDate(cursor.getDate()+1);
+  }
+  if(!added.length){ alert('Toutes les dates ouvrées de ce mois existent déjà.'); return; }
+
+  if(Array.isArray(d.template) && d.template.length){
+    d.shifts = d.shifts || {};
+    const labelToId = {}; d.slots.forEach(s => { labelToId[s.label] = s.id; });
+    added.sort();
+    added.forEach((iso, i) => {
+      const dayObj = d.days.find(x => x.date === iso);
+      if(!dayObj) return;
+      const templateRow = d.template[i % d.template.length];
+      Object.keys(templateRow).forEach(slotLabel => {
+        const sid = labelToId[slotLabel];
+        if(!sid) return;
+        d.shifts[dayObj.id+'|'+sid] = templateRow[slotLabel];
+      });
+    });
+  }
+
+  renderPhonePlanningGrid();
+  await persistCustomTab();
+  logChange(`a ajouté ${added.length} jours ouvrés (${m[1]}/${m[2]}) au Planning Tel`);
+});
+document.getElementById('btnAddPhoneSlot').addEventListener('click', async () => {
+  const label = prompt('Nom du créneau (ex: 17h-18h) :');
+  if(!label || !label.trim()) return;
+  activeCustomTabData.slots.push({id: cryptoId(), label: label.trim()});
+  renderPhonePlanningGrid();
+  await persistCustomTab();
+});
+document.getElementById('btnAddPhonePerson').addEventListener('click', async () => {
+  const name = prompt('Nom de la personne à ajouter (pour la couleur / suggestion) :');
+  if(!name || !name.trim()) return;
+  activeCustomTabData.people.push({id: cryptoId(), name: name.trim()});
+  renderPhonePlanningGrid();
+  await persistCustomTab();
+});
+document.getElementById('btnSavePhoneTemplate').addEventListener('click', async () => {
+  const d = activeCustomTabData;
+  const sortedDays = [...d.days].sort((a,b) => a.date.localeCompare(b.date));
+  const filledDays = sortedDays.filter(day => d.slots.some(s => (d.shifts||{})[day.id+'|'+s.id]));
+  if(!filledDays.length){
+    alert('Aucune case remplie à enregistrer comme modèle. Remplis d\u2019abord un planning, puis reviens ici.');
+    return;
+  }
+  if(!confirm(`Enregistrer le planning actuel (${filledDays.length} jour(s) remplis) comme modèle ? Il sera réappliqué automatiquement à chaque nouveau mois ajouté.`)) return;
+  const template = filledDays.map(day => {
+    const row = {};
+    d.slots.forEach(s => {
+      const val = (d.shifts||{})[day.id+'|'+s.id];
+      if(val) row[s.label] = val;
+    });
+    return row;
+  });
+  d.template = template;
+  await persistCustomTab();
+  alert(`Modèle enregistré (${template.length} jour(s)). Il s\u2019appliquera automatiquement au prochain mois ajouté.`);
+});
+document.getElementById('btnConvertPhonePlanning').addEventListener('click', async () => {
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
+  if(!confirm('Transformer cet onglet en "Planning Tel" ? Le contenu actuel de ce tableau sera remplacé.')) return;
+  activeCustomTabData = defaultPhonePlanningData();
   renderCustomTable();
   updateCustomToolbarForType();
   await persistCustomTab();
