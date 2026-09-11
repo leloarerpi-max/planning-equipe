@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --paper:#F1EFE8;
@@ -119,6 +120,22 @@
   tr.meal-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td.meal-date-cell{ color:var(--violet); font-weight:800; }
+
+  /* Avenants WF (checklist importé depuis Excel) */
+  table.checklist-table{ border-collapse:collapse; width:100%; min-width:420px; font-size:13.5px; }
+  table.checklist-table th, table.checklist-table td{ border:1px solid var(--line); padding:0; }
+  table.checklist-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:10px; text-align:left; font-weight:600; }
+  td.checklist-text{ padding:0; }
+  td.checklist-text input{
+    width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px;
+    padding:10px 12px; color:var(--ink);
+  }
+  td.checklist-text input:focus{ outline:1px solid var(--violet); border-radius:2px; }
+  tr.checklist-done td.checklist-text{ background:var(--teal-bg); }
+  tr.checklist-done td.checklist-text input{ color:var(--teal); text-decoration:line-through; text-decoration-color:var(--teal); opacity:.85; }
+  td.checklist-check{ text-align:center; width:70px; }
+  td.checklist-check input[type="checkbox"]{ width:20px; height:20px; cursor:pointer; accent-color:var(--teal); }
+  td.checklist-row-actions{ text-align:center; width:36px; }
   .meal-today-badge{
     display:inline-block; background:var(--violet); color:#fff; font-size:10px; font-weight:800;
     letter-spacing:.03em; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle;
@@ -424,7 +441,11 @@
       <button class="btn" id="btnAddMealMonth" style="display:none;">+ Ajouter un mois (lun-ven)</button>
       <button class="btn" id="btnSaveMealTemplate" style="display:none;">💾 Enregistrer ce planning comme modèle</button>
       <button class="btn" id="btnAddMealPerson" style="display:none;">+ Ajouter une personne</button>
+      <button class="btn" id="btnAddChecklistRow" style="display:none;">+ Ajouter une ligne</button>
+      <button class="btn" id="btnImportExcel" style="display:none;">📥 Importer un fichier Excel</button>
+      <input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
       <button class="btn-ghost" id="btnConvertMealPlanning" style="opacity:.7;">🍽️ Transformer en Planning Repas</button>
+      <button class="btn-ghost" id="btnConvertChecklist" style="opacity:.7;">📋 Transformer en Avenants WF</button>
       <button class="btn-ghost" id="btnDeleteTab" style="margin-left:auto; opacity:.45;" title="Réservé au superviseur">Supprimer cet onglet</button>
     </div>
     <div class="status" id="customStatus"></div>
