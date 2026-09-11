@@ -115,10 +115,14 @@
     border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
     font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
   }
-  tr.meal-today-row td{ box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
+  tr.meal-today-row td{ background:var(--violet-bg) !important; box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td.meal-date-cell{ color:var(--violet); font-weight:800; }
+  .meal-today-badge{
+    display:inline-block; background:var(--violet); color:#fff; font-size:10px; font-weight:800;
+    letter-spacing:.03em; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle;
+  }
   h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:clamp(26px,5vw,34px); margin:0 0 4px; letter-spacing:-0.01em; }
   .subtitle{ color:var(--ink-soft); font-size:14px; margin:0; line-height:1.5; }
 
