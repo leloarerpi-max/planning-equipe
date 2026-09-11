@@ -64,11 +64,6 @@ function expectedStatusForObjectif(val){
   if(val === '' || val === null || val === undefined) return '';
   return Number(val) === 0 ? 'fait' : 'afaire';
 }
-function normalizeDayStatuses(d){
-  if(!d || !Array.isArray(d.tasks)) return d;
-  d.tasks.forEach(t => { t.status = expectedStatusForObjectif(t.objectif); });
-  return d;
-}
 
 async function loadDayData(date, opts){
   opts = opts || {};
@@ -83,7 +78,6 @@ async function loadDayData(date, opts){
     d = await storageGet(dayKey(date));
   }
   if(!d || !d.tasks) d = {tasks: []};
-  normalizeDayStatuses(d);
   dayCache[date] = d;
   return d;
 }
@@ -157,7 +151,6 @@ function attachDayListener(date){
     let fresh;
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
     if(!fresh || !fresh.tasks) return;
-    normalizeDayStatuses(fresh);
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
     if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt someone mid-typing
