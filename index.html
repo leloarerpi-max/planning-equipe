@@ -217,6 +217,14 @@
   .today-info .today-nums{ font-size:13.5px; color:var(--ink-soft); margin-bottom:8px; }
   .today-info .today-nums b{ color:var(--ink); font-weight:700; }
   .team-objectif .label{ font-size:12.5px; color:var(--ink-soft); }
+  .cat-badges-row{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+  .cat-badge{
+    display:inline-flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--line-strong);
+    border-radius:12px; padding:4px 10px; font-size:11.5px; color:var(--ink-soft); white-space:nowrap;
+  }
+  .cat-badge b{ color:var(--ink); font-weight:700; }
+  .cat-badge-total{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .cat-badge-total b{ color:#fff; }
   .bar-track{ background:var(--line); border-radius:2px; height:8px; overflow:hidden; margin-bottom:4px; }
   .bar-fill{ height:100%; background:var(--ochre); transition:width .2s ease; }
   .bar-fill.reached{ background:var(--teal); }
@@ -359,13 +367,6 @@
   </header>
 
   <div class="team-objectif" id="teamObjectif" style="display:none"></div>
-
-  <div class="summary" id="categoryTotalsPanel" style="display:none; margin-top:0; margin-bottom:20px;">
-    <h2 style="font-size:16px;">Total du jour par catégorie</h2>
-    <div class="table-shell" style="max-width:340px;">
-      <table id="categoryTotalsTable" style="width:100%; border-collapse:collapse; font-size:13.5px;"></table>
-    </div>
-  </div>
 
   <div class="daybar" id="dayBar"></div>
 
