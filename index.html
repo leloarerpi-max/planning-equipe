@@ -6,8 +6,6 @@
 <title>Planning &amp; Objectif</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
   :root{
     --paper:#F1EFE8;
@@ -36,46 +34,6 @@
   }
   .wrap{ max-width:1060px; margin:0 auto; padding:28px 16px 60px; }
   header{ margin-bottom:16px; }
-
-  .apptabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; border-bottom:2px solid var(--line-strong); }
-  .apptab-btn{
-    font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:16px;
-    background:none; border:none; padding:9px 4px; margin-right:16px; color:var(--ink-soft);
-    cursor:pointer; position:relative; top:2px; display:flex; align-items:center; gap:6px;
-  }
-  .apptab-btn.active{ color:var(--ink); border-bottom:3px solid var(--violet); }
-  .apptab-btn .apptab-del{
-    font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:400; color:var(--ink-soft);
-    opacity:0; background:none; border:none; padding:0 2px;
-  }
-  .apptab-btn:hover .apptab-del{ opacity:.7; }
-  .apptab-btn .apptab-del:hover{ opacity:1; color:var(--danger); }
-  .apptab-add{
-    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft);
-    background:none; border:1px dashed var(--line-strong); border-radius:14px; padding:5px 12px;
-    cursor:pointer; align-self:center; margin-bottom:6px;
-  }
-  .apptab-add:hover{ color:var(--violet); border-color:var(--violet); }
-
-  table.custom-table{ border-collapse:collapse; width:100%; min-width:480px; font-size:13.5px; }
-  table.custom-table th, table.custom-table td{ border:1px solid var(--line); padding:0; }
-  table.custom-table thead th{
-    position:sticky; top:0; background:var(--panel); z-index:2; padding:0;
-  }
-  .custom-col-head{ display:flex; align-items:center; gap:4px; padding:8px 6px; }
-  .custom-col-head input{
-    flex:1; min-width:0; border:none; background:transparent; font-family:inherit;
-    font-size:13px; font-weight:700; color:var(--ink); padding:2px;
-  }
-  .custom-col-head input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  .custom-col-del{ flex-shrink:0; background:none; border:none; color:var(--ink-soft); cursor:pointer; font-size:12px; opacity:.5; }
-  .custom-col-del:hover{ opacity:1; color:var(--danger); }
-  td.custom-cell input{
-    width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px;
-    padding:9px 8px; color:var(--ink);
-  }
-  td.custom-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  td.custom-row-actions{ text-align:center; width:36px; }
   h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:clamp(26px,5vw,34px); margin:0 0 4px; letter-spacing:-0.01em; }
   .subtitle{ color:var(--ink-soft); font-size:14px; margin:0; line-height:1.5; }
 
@@ -102,24 +60,6 @@
   }
   .btn-newday:hover{ background:#3a3733; }
 
-  .archive-banner{
-    display:flex; align-items:center; gap:8px; background:var(--ochre-bg); color:#7a4c1f;
-    border:1px solid var(--ochre); border-radius:var(--radius); padding:9px 14px; font-size:12.5px;
-    margin:0 0 12px;
-  }
-
-  .undo-toast{
-    position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
-    background:var(--ink); color:#fff; border-radius:20px; padding:10px 10px 10px 16px;
-    display:flex; align-items:center; gap:12px; font-size:13px; box-shadow:0 6px 18px rgba(0,0,0,.25);
-    z-index:50; animation: toastIn .2s ease-out;
-  }
-  .undo-toast button{
-    background:#fff; color:var(--ink); border:none; border-radius:14px; padding:6px 12px;
-    font-weight:700; font-size:12.5px; cursor:pointer;
-  }
-  @keyframes toastIn{ from{ opacity:0; transform:translate(-50%,8px); } to{ opacity:1; transform:translate(-50%,0); } }
-
   .toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px; align-items:center; }
   button{ font-family:inherit; font-size:13.5px; cursor:pointer; border-radius:var(--radius); }
   .btn{ background:var(--panel); border:1px solid var(--line-strong); color:var(--ink); padding:7px 12px; transition:background .12s ease, border-color .12s ease; }
@@ -145,31 +85,16 @@
 
   .team-objectif{
     background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
-    padding:18px 20px; margin-bottom:16px; display:flex; align-items:center; gap:22px; flex-wrap:wrap;
+    padding:16px 18px; margin-bottom:18px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;
   }
-  .today-ring{ flex-shrink:0; }
-  .today-ring .ring-pct{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:20px; fill:var(--ink); }
-  .today-info .today-date{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:18px; margin-bottom:4px; }
-  .today-info .today-nums{ font-size:13.5px; color:var(--ink-soft); margin-bottom:8px; }
-  .today-info .today-nums b{ color:var(--ink); font-weight:700; }
+  .team-objectif .big-num{ font-family:'Fraunces', Georgia, serif; font-size:30px; font-weight:600; }
+  .team-objectif .big-num.reached{ color:var(--teal); }
+  .team-objectif .big-num.notyet{ color:var(--ochre); }
   .team-objectif .label{ font-size:12.5px; color:var(--ink-soft); }
   .bar-track{ background:var(--line); border-radius:2px; height:8px; overflow:hidden; margin-bottom:4px; }
   .bar-fill{ height:100%; background:var(--ochre); transition:width .2s ease; }
   .bar-fill.reached{ background:var(--teal); }
-  .bar-caption{ font-size:11.5px; color:var(--ink-soft); }
-
-  /* micro-animation when a task is marked Fait */
-  @keyframes rowPulse{
-    0%{ box-shadow: inset 0 0 0 0 rgba(47,111,99,0); }
-    30%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,.22); }
-    100%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,0); }
-  }
-  tr.task-row.just-done{ animation: rowPulse .7s ease-out; }
-  @keyframes checkPop{
-    0%{ transform: scale(0); opacity:0; }
-    55%{ transform: scale(1.3); opacity:1; }
-    100%{ transform: scale(1); opacity:1; }
-  }
+  .bar-caption{ font-size:11.5px; color:var(--ink-soft); text-align:right; }
 
   .table-shell{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); overflow-x:auto; }
   table{ border-collapse:collapse; width:100%; min-width:720px; font-size:13.5px; }
@@ -188,52 +113,30 @@
   select.priority-select.pr-bleu{ color:#3C5C82; }
   select.priority-select.pr-empty{ color:var(--ink-soft); }
 
-  td.task-name{ padding:10px; font-weight:500; max-width:250px; display:flex; align-items:center; gap:6px; }
-  td.task-name input{ flex:1; min-width:0; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); text-transform:uppercase; }
+  td.task-name{ padding:10px; font-weight:500; max-width:250px; }
+  td.task-name input{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); }
   td.task-name input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  .multimode-toggle{
-    flex-shrink:0; background:none; border:1px solid var(--line-strong); border-radius:4px;
-    width:22px; height:22px; font-size:13px; line-height:1; cursor:pointer; color:var(--ink-soft);
-    display:flex; align-items:center; justify-content:center; padding:0;
-  }
-  .multimode-toggle:hover{ border-color:var(--violet); color:var(--violet); }
 
-  td.checklist-cell{ padding:6px; text-align:left; }
-  .checklist-group{ display:flex; flex-wrap:wrap; gap:6px; }
-  .checklist-item{
-    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:12px;
-    padding:4px 10px 4px 8px; font-size:12px; font-weight:600; color:var(--ink-soft); background:#fff; cursor:pointer;
+  td.people-cell{ min-width:170px; padding:6px; }
+  .person-tags{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  .person-tag{
+    display:inline-flex; align-items:center; gap:4px; border-radius:12px; padding:3px 4px 3px 10px;
+    font-size:12px; font-weight:700; white-space:nowrap;
   }
-  .checklist-item input{ margin:0; cursor:pointer; }
-
-  td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
-  select.person-slot-select{
-    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
-    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
-    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
-    color:var(--ink-soft); background:transparent; letter-spacing:.2px;
-  }
-  select.person-slot-select.has-person{ color:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06); }
-
-  select.status-select{
-    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
-    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
-    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
-    letter-spacing:.2px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
-  }
-  select.status-select.st-fait{ background:var(--teal); color:#fff; }
-  select.status-select.st-afaire{ background:var(--ochre); color:#fff; }
-  select.status-select.st-empty{ background:#fff; color:var(--ink-soft); box-shadow:inset 0 0 0 1px var(--line-strong); }
-  td.status-cell{ position:relative; text-align:center; }
-  .status-check{
-    position:absolute; top:50%; right:6px; transform:translateY(-50%);
-    color:var(--teal); font-weight:800; font-size:15px; pointer-events:none;
-    animation: checkPop .45s ease-out;
+  .person-tag .tag-remove{ background:none; border:none; color:inherit; opacity:.8; cursor:pointer; font-size:13px; padding:2px 6px; }
+  .person-tag .tag-remove:hover{ opacity:1; }
+  select.add-person-select{
+    font-family:inherit; font-size:11.5px; color:var(--ink-soft); background:#fff;
+    border:1px dashed var(--line-strong); border-radius:12px; padding:3px 8px; cursor:pointer;
   }
 
-  input.obj-input{ width:66px; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:700; padding:10px 4px; text-align:center; color:var(--ink); }
+  select.status-select{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13px; font-weight:700; padding:10px 4px; cursor:pointer; text-align:center; text-align-last:center; appearance:none; -webkit-appearance:none; }
+  select.status-select.st-fait{ color:var(--teal); }
+  select.status-select.st-afaire{ color:var(--ochre); }
+  select.status-select.st-empty{ color:var(--ink-soft); }
+
+  input.obj-input{ width:66px; border:none; background:transparent; font-family:inherit; font-size:13.5px; padding:10px 4px; text-align:center; color:var(--ink); }
   input.obj-input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  input.obj-input:disabled{ opacity:.45; cursor:not-allowed; }
   td.obj-cell{ text-align:center; }
 
   button.remove-x{ opacity:.5; color:var(--ink-soft); background:none; border:none; font-size:14px; padding:6px 10px; cursor:pointer; }
@@ -242,33 +145,10 @@
   .summary{ margin-top:28px; }
   .summary h2{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:19px; margin:0 0 4px; }
   .summary .hint{ color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; }
-
-  .summary-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .stat-card{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px 16px; }
-  .stat-card .stat-name{ font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
-  .stat-card .stat-value{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:26px; }
-
-  table.stats-matrix{ border-collapse:collapse; width:100%; font-size:12.5px; min-width:600px; }
-  table.stats-matrix th, table.stats-matrix td{ border:1px solid var(--line); padding:6px 8px; text-align:center; white-space:nowrap; }
-  table.stats-matrix thead th{ position:sticky; top:0; background:var(--panel); z-index:2; font-weight:700; }
-  table.stats-matrix td.stats-task-name{ text-align:left; text-transform:uppercase; font-weight:500; position:sticky; left:0; background:var(--panel); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-  table.stats-matrix td.stats-count-0{ color:var(--line-strong); }
-  table.stats-matrix td.stats-count-hi{ background:var(--teal-bg); color:var(--teal); font-weight:700; }
-
-  .journal-entry{ display:flex; gap:10px; padding:8px 4px; border-bottom:1px solid var(--line); font-size:12.5px; }
-  .journal-entry .journal-time{ color:var(--ink-soft); flex-shrink:0; width:90px; }
-  .journal-entry .journal-name{ font-weight:700; flex-shrink:0; }
-  .journal-entry:last-child{ border-bottom:none; }
   .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12.5px; }
   .bar-row .bar-label{ width:130px; flex-shrink:0; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; }
   .bar-row .bar-track{ flex:1; margin-bottom:0; }
   .bar-row .bar-count{ width:70px; text-align:right; color:var(--ink-soft); flex-shrink:0; }
-  .bar-row .person-obj-input{
-    width:52px; font-family:inherit; font-size:12.5px; text-align:center; padding:3px 4px;
-    border:1px solid var(--line-strong); border-radius:2px; background:#fff; color:var(--ink); flex-shrink:0;
-  }
-  .bar-row .person-obj-input:focus{ outline:1px solid var(--violet); }
-  .bar-row .person-obj-input:disabled{ opacity:.45; cursor:not-allowed; }
 
   .empty-note{ padding:24px; color:var(--ink-soft); font-size:13.5px; }
   footer{ margin-top:26px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:12px; }
@@ -281,21 +161,19 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="apptabs" id="appTabs"></div>
-
-  <section id="app-tab-planning" class="app-tab-section">
   <header>
     <h1>Planning &amp; Objectif</h1>
     <p class="subtitle">Liste de tâches par jour : statut, priorité, personnes assignées et objectif. Chaque nouveau jour repart à zéro sur les statuts, mais l'historique des jours précédents reste consultable.</p>
   </header>
 
-  <div class="team-objectif" id="teamObjectif" style="display:none"></div>
-
   <div class="daybar" id="dayBar"></div>
 
-  <div class="archive-banner" id="archiveBanner" style="display:none;">
-    🔒 Ce n'est pas la date du jour — lecture seule. Seul le superviseur peut le modifier.
+  <div class="toolbar">
+    <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
+    <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
+    <button class="btn-ghost" id="btnClearDay">Vider les statuts de ce jour</button>
   </div>
+  <div class="status" id="status"></div>
 
   <div class="filters">
     <select id="filterPerson"><option value="">Toutes les personnes</option></select>
@@ -320,70 +198,470 @@
     <span><i class="swatch" style="background:#C9D8EB"></i>Bleu</span>
   </div>
 
+  <div class="team-objectif" id="teamObjectif" style="display:none"></div>
+
   <div class="table-shell" id="tableShell">
     <div class="empty-note">Chargement…</div>
   </div>
 
   <div class="summary" id="summaryByPerson" style="display:none">
     <h2>Objectif par personne</h2>
-    <p class="hint">Le volume "fait" vient des tâches du jour ; l'objectif (à droite) est modifiable pour chaque personne.</p>
+    <p class="hint">Somme des objectifs des tâches assignées ce jour-là, et part déjà marquée "Fait".</p>
     <div id="barsByPerson"></div>
-  </div>
-
-  <div class="toolbar" style="margin-top:22px;">
-    <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
-    <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
-    <button class="btn-ghost" id="btnClearDay">Vider les statuts de ce jour</button>
-    <button class="btn" id="btnStats">📊 Statistiques</button>
-    <button class="btn" id="btnJournal">🕒 Journal</button>
-    <button class="btn" id="btnExport">⬇️ Exporter</button>
-    <button class="btn" id="btnImport">⬆️ Importer</button>
-    <input type="file" id="importFileInput" accept="application/json" style="display:none;" />
-    <button class="btn" id="btnToggleAdmin" style="margin-left:auto;">🔒 Mode superviseur</button>
-  </div>
-  <div class="status" id="status"></div>
-
-  <div class="summary" id="journalPanel" style="display:none;">
-    <h2>Journal des modifications</h2>
-    <p class="hint">Les 100 dernières actions, les plus récentes en premier.</p>
-    <div id="journalLoading" class="empty-note" style="display:none;">Chargement…</div>
-    <div id="journalList" style="max-height:400px; overflow:auto;"></div>
-  </div>
-
-  <div class="summary" id="statsPanel" style="display:none;">
-    <h2>Statistiques — répartition des tâches</h2>
-    <p class="hint">Sur tout l'historique disponible : nombre de fois où chaque tâche a été marquée "Fait" par chaque personne.</p>
-    <div id="statsLoading" class="empty-note" style="display:none;">Calcul en cours…</div>
-    <div id="statsTotals" class="summary-grid" style="margin-bottom:20px;"></div>
-    <div class="table-shell" id="statsTableShell" style="overflow:auto; max-height:460px;"></div>
   </div>
 
   <footer>
     Données stockées côté Claude, visibles par toute personne utilisant cet outil.
-    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px; opacity:.45;" title="Réservé au superviseur">Réinitialiser tout l'outil</button>
+    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px;">Réinitialiser tout l'outil</button>
   </footer>
-  </section>
-
-  <section id="app-tab-custom" class="app-tab-section" style="display:none;">
-    <header>
-      <h1 id="customTabTitle">Onglet</h1>
-      <p class="subtitle">Tableau libre : ajoute des colonnes et des lignes selon ce que tu veux y suivre.</p>
-    </header>
-    <div class="toolbar">
-      <button class="btn" id="btnRenameTab">✏️ Renommer l'onglet</button>
-      <button class="btn" id="btnAddColumn">+ Ajouter une colonne</button>
-      <button class="btn" id="btnAddRow">+ Ajouter une ligne</button>
-      <button class="btn-ghost" id="btnDeleteTab" style="margin-left:auto; opacity:.45;" title="Réservé au superviseur">Supprimer cet onglet</button>
-    </div>
-    <div class="status" id="customStatus"></div>
-    <div class="table-shell" id="customTableShell">
-      <div class="empty-note">Chargement…</div>
-    </div>
-  </section>
 </div>
 
-<script src="shared.js"></script>
-<script src="planning.js"></script>
-<script src="customtabs.js"></script>
+<script>
+const PEOPLE_KEY = 'po:people';
+const INDEX_KEY = 'po:days-index';
+function dayKey(d){ return 'po:day:' + d; }
+const PERSON_PALETTE = ['#6FA8DC', '#A9564A', '#8E7CC3', '#D9A63C', '#4F9D6E', '#4A7FC1', '#C2708C', '#7FA0A6'];
+
+function cryptoId(){ return 'id-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setStatus(text, cls){ const el = document.getElementById('status'); el.textContent = text; el.className = 'status' + (cls ? ' '+cls : ''); }
+function personColor(personId){
+  const idx = people.findIndex(p => p.id === personId);
+  if(idx < 0) return null;
+  return PERSON_PALETTE[idx % PERSON_PALETTE.length];
+}
+function textColorFor(bg){ return bg === '#D9A63C' ? '#3a2e0d' : '#ffffff'; }
+function fmtDday(iso){
+  const d = new Date(iso+'T00:00:00');
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
+function todayIso(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function addDaysIso(iso, n){
+  const d = new Date(iso+'T00:00:00');
+  d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function parseFrDate(str){
+  const m = str.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(!m) return null;
+  const dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yyyy = m[3];
+  return yyyy+'-'+mm+'-'+dd;
+}
+function toFr(iso){
+  const [y,m,d] = iso.split('-');
+  return d+'/'+m+'/'+y;
+}
+
+let people = [];
+let daysIndex = [];
+let currentDate = null;
+let dayData = null; // {tasks: [...]}
+
+function defaultPeople(){
+  return ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name:n}));
+}
+
+function defaultTasksForDay(byName){
+  const raw = [
+    ['Vérif se mail', [], '', 53, 'rose'],
+    ['Décompte matin', [], 'afaire', null, 'rose'],
+    ['Décompte soir', [], 'afaire', null, 'rose'],
+    ['Tri', [], 'afaire', null, 'rose'],
+    ['Tableau de bord édition', ['Régis'], 'fait', 2, 'rose'],
+    ['Certificat à générer', [], 'fait', 0, 'rose'],
+    ['Workflow instantanéité Xpress', [], 'afaire', 9, 'rose'],
+    ['À reprendre sheet vérif', [], 'fait', 0, 'rose'],
+    ['Sheet "hors périmètre" matin', ['Ben'], 'fait', 7, 'rose'],
+    ['Anomalie à surveiller sheet vérif', [], 'fait', 0, 'rose'],
+    ['Lecture TA Lemoine', [], 'fait', 0, 'rose'],
+    ['Édition mail', ['Régis'], 'afaire', 17, 'rose'],
+    ['Échange client + échange résil J+1', ['Anaïs'], 'afaire', 40, 'rose'],
+    ['Affaire nouvelle', [], 'fait', 0, 'rose'],
+    ['Avenants (mail)', [], 'afaire', 49, 'rose'],
+    ['Avenant (workflow résil 2 - sheet planning)', ['Charlotte'], 'fait', 8, 'rose'],
+    ['Échange édition TN', [], 'afaire', 33, 'rose'],
+    ['Échange édition BPA', ['Régis'], 'fait', 2, 'rose'],
+    ['Échange avenant sur acquisition', ['Ben'], 'fait', 2, 'rose'],
+    ['Échange avenant modification banque', ['Ben'], 'afaire', 33, 'rose'],
+    ['Échange avenant acceptation banque', ['Clara'], 'fait', 7, 'peche'],
+    ['Échange résiliation', ['Ben'], 'afaire', 14, 'peche'],
+    ['Échange suivi substi', ['Charlotte'], 'fait', 6, 'peche'],
+    ['Échange modif RIB', ['Clara'], 'fait', 2, 'peche'],
+    ['Échange attestation', ['Clara'], 'fait', 4, 'peche'],
+    ['Échange autre', ['Clara'], 'afaire', 12, 'peche'],
+    ['Échange VIP', [], 'fait', 0, 'peche'],
+    ['Mail résil', ['Régis'], 'afaire', 14, 'peche'],
+    ['Mail prélèvement', ['Charlotte'], 'fait', 12, 'peche'],
+    ['Mail RIB', [], 'afaire', 10, 'peche'],
+    ['Impayé', ['Charlotte'], 'afaire', 140, 'peche'],
+    ['Mise en demeure', [], 'afaire', 35, 'peche'],
+    ['Mail mobilité', [], 'afaire', null, 'peche'],
+    ['Avis de corrections et domiciliations', [], 'afaire', null, 'peche'],
+    ['Chèque (bureau de Pierrick)', [], 'afaire', null, 'peche'],
+    ['Avenant en cours (Pierrick) - Avnt cloche', [], 'afaire', null, 'peche'],
+    ['Vérif chèque lutin', [], 'afaire', null, 'peche'],
+    ['Mail demande attestation', [], 'afaire', null, 'bleu'],
+    ['Mail NPAI', [], 'afaire', null, 'bleu'],
+    ['Mail retour IT', [], 'afaire', null, 'bleu'],
+  ];
+  return raw.map(([name, persons, status, objectif, priority]) => ({
+    id: cryptoId(), name,
+    personIds: persons.map(n => byName[n]).filter(Boolean),
+    status: status || '', priority: priority || '',
+    objectif: (objectif===null||objectif===undefined) ? '' : objectif
+  }));
+}
+
+async function storageGet(key){
+  try{ const r = await window.storage.get(key, true); return (r && r.value) ? JSON.parse(r.value) : null; }
+  catch(e){ return null; }
+}
+async function storageSet(key, val){
+  try{ const r = await window.storage.set(key, JSON.stringify(val), true); return !!r; }
+  catch(e){ return false; }
+}
+
+async function init(){
+  people = await storageGet(PEOPLE_KEY);
+  if(!people){ people = defaultPeople(); await storageSet(PEOPLE_KEY, people); }
+
+  daysIndex = await storageGet(INDEX_KEY);
+  if(!daysIndex || !daysIndex.length){
+    const byName = {}; people.forEach(p => byName[p.name] = p.id);
+    const d0 = '2026-09-10';
+    const tasks = defaultTasksForDay(byName);
+    await storageSet(dayKey(d0), {tasks});
+    daysIndex = [d0];
+    await storageSet(INDEX_KEY, daysIndex);
+  }
+  currentDate = daysIndex[daysIndex.length-1];
+  dayData = await storageGet(dayKey(currentDate));
+  if(!dayData) dayData = {tasks:[]};
+
+  renderAll();
+}
+
+async function persistDay(){
+  setStatus('Enregistrement…', 'saving');
+  const ok = await storageSet(dayKey(currentDate), dayData);
+  if(ok){
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+async function persistPeople(){ await storageSet(PEOPLE_KEY, people); }
+async function persistIndex(){ await storageSet(INDEX_KEY, daysIndex); }
+
+/* ---------- day bar ---------- */
+function renderDayBar(){
+  const bar = document.getElementById('dayBar');
+  const sorted = [...daysIndex].sort();
+  let html = '';
+  sorted.forEach(d => {
+    html += `<span class="day-pill ${d===currentDate?'active':''}" data-date="${d}">${fmtDday(d)}<button class="day-del" data-date-del="${d}" title="Supprimer ce jour">✕</button></span>`;
+  });
+  bar.innerHTML = html + '<button class="btn-newday" id="btnNewDay">+ Nouveau jour</button>';
+
+  bar.querySelectorAll('.day-pill').forEach(pill => {
+    pill.addEventListener('click', async (e) => {
+      if(e.target.classList.contains('day-del')) return;
+      const d = pill.dataset.date;
+      if(d === currentDate) return;
+      currentDate = d;
+      dayData = await storageGet(dayKey(currentDate));
+      if(!dayData) dayData = {tasks:[]};
+      renderAll();
+    });
+  });
+  bar.querySelectorAll('.day-del').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const d = btn.dataset.dateDel;
+      if(daysIndex.length <= 1){ alert('Impossible de supprimer le dernier jour restant.'); return; }
+      if(!confirm(`Supprimer définitivement le jour du ${toFr(d)} ?`)) return;
+      daysIndex = daysIndex.filter(x => x !== d);
+      await persistIndex();
+      if(currentDate === d){
+        currentDate = daysIndex[daysIndex.length-1];
+        dayData = await storageGet(dayKey(currentDate));
+        if(!dayData) dayData = {tasks:[]};
+      }
+      renderAll();
+    });
+  });
+  document.getElementById('btnNewDay').addEventListener('click', createNewDay);
+}
+
+async function createNewDay(){
+  const suggestion = toFr(addDaysIso(currentDate, 1));
+  const input = prompt('Date du nouveau jour (JJ/MM/AAAA) :', suggestion);
+  if(!input) return;
+  const iso = parseFrDate(input);
+  if(!iso){ alert('Format invalide. Utilise JJ/MM/AAAA.'); return; }
+  if(daysIndex.includes(iso)){
+    if(!confirm('Ce jour existe déjà. L\\'ouvrir ?')) return;
+    currentDate = iso;
+    dayData = await storageGet(dayKey(currentDate));
+    if(!dayData) dayData = {tasks:[]};
+    renderAll();
+    return;
+  }
+  // Clone current day's tasks, reset statuses only
+  const clonedTasks = dayData.tasks.map(t => ({...t, id: cryptoId(), status: ''}));
+  daysIndex.push(iso);
+  daysIndex.sort();
+  currentDate = iso;
+  dayData = {tasks: clonedTasks};
+  await persistIndex();
+  await persistDay();
+  renderAll();
+}
+
+async function clearDayStatuses(){
+  if(!confirm('Vider tous les statuts (Fait/À faire) de ce jour ? Les tâches, priorités et personnes restent.')) return;
+  dayData.tasks.forEach(t => { t.status = ''; });
+  renderAll();
+  await persistDay();
+}
+
+/* ---------- filters ---------- */
+function currentFilters(){
+  return {
+    person: document.getElementById('filterPerson').value,
+    priority: document.getElementById('filterPriority').value,
+    status: document.getElementById('filterStatus').value,
+  };
+}
+function taskMatchesFilters(t, f){
+  if(f.person){
+    if(f.person === '__none__'){ if(t.personIds.length) return false; }
+    else if(!t.personIds.includes(f.person)) return false;
+  }
+  if(f.priority){
+    if(f.priority === 'none'){ if(t.priority) return false; }
+    else if(t.priority !== f.priority) return false;
+  }
+  if(f.status){
+    if(f.status === 'none'){ if(t.status) return false; }
+    else if(t.status !== f.status) return false;
+  }
+  return true;
+}
+function renderFilterOptions(){
+  const fp = document.getElementById('filterPerson');
+  const current = fp.value;
+  fp.innerHTML = '<option value="">Toutes les personnes</option><option value="__none__">Non attribué</option>' +
+    people.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  if([...fp.options].some(o => o.value === current)) fp.value = current;
+}
+
+/* ---------- main render ---------- */
+function renderAll(){
+  renderDayBar();
+  renderFilterOptions();
+  renderTable();
+}
+
+function taskRowHtml(t){
+  const stCls = t.status === 'fait' ? 'st-fait' : (t.status === 'afaire' ? 'st-afaire' : 'st-empty');
+  const prCls = t.priority ? 'pr-'+t.priority : 'pr-empty';
+  const rowCls = t.priority ? 'row-'+t.priority : 'row-empty';
+  const assigned = t.personIds.map(pid => people.find(p => p.id === pid)).filter(Boolean);
+  const assignedIds = new Set(t.personIds);
+  const options = people.filter(p => !assignedIds.has(p.id));
+  let tags = assigned.map(p => {
+    const c = personColor(p.id);
+    return `<span class="person-tag" style="background:${c};color:${textColorFor(c)}">${escapeHtml(p.name)}<button class="tag-remove" data-person="${p.id}">×</button></span>`;
+  }).join('');
+  tags += `<select class="add-person-select">
+    <option value="">+ ajouter</option>
+    ${options.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
+  </select>`;
+
+  return `<tr class="task-row ${rowCls}" data-task="${t.id}">
+    <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" /></td>
+    <td><select class="priority-select ${prCls}" data-field="priority">
+      <option value="" ${t.priority===''?'selected':''}>—</option>
+      <option value="rose" ${t.priority==='rose'?'selected':''}>Rose</option>
+      <option value="peche" ${t.priority==='peche'?'selected':''}>Pêche</option>
+      <option value="bleu" ${t.priority==='bleu'?'selected':''}>Bleu</option>
+    </select></td>
+    <td class="people-cell"><div class="person-tags">${tags}</div></td>
+    <td><select class="status-select ${stCls}" data-field="status">
+      <option value="" ${t.status===''?'selected':''}>—</option>
+      <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
+      <option value="afaire" ${t.status==='afaire'?'selected':''}>À faire</option>
+    </select></td>
+    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" /></td>
+    <td><button class="remove-x" data-action="remove-task" title="Supprimer">✕</button></td>
+  </tr>`;
+}
+
+function renderTable(){
+  const shell = document.getElementById('tableShell');
+  if(!dayData.tasks.length){
+    shell.innerHTML = '<div class="empty-note">Aucune tâche pour ce jour. Ajoute-en une pour commencer.</div>';
+    document.getElementById('teamObjectif').style.display = 'none';
+    document.getElementById('summaryByPerson').style.display = 'none';
+    return;
+  }
+  const f = currentFilters();
+  const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+
+  if(!visible.length){
+    shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
+  } else {
+    let html = '<table><thead><tr><th>Tâche</th><th>Couleur</th><th>Personnes</th><th>Statut</th><th>Objectif</th><th></th></tr></thead><tbody>';
+    visible.forEach(t => { html += taskRowHtml(t); });
+    html += '</tbody></table>';
+    shell.innerHTML = html;
+
+    shell.querySelectorAll('tr[data-task]').forEach(row => {
+      const id = row.dataset.task;
+      row.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => onFieldChange(id, el)));
+      row.querySelector('[data-action="remove-task"]').addEventListener('click', () => removeTask(id));
+      row.querySelectorAll('.tag-remove').forEach(btn => btn.addEventListener('click', () => removePersonFromTask(id, btn.dataset.person)));
+      const addSel = row.querySelector('.add-person-select');
+      if(addSel) addSel.addEventListener('change', () => addPersonToTask(id, addSel.value));
+    });
+  }
+
+  renderSummary();
+}
+
+async function onFieldChange(id, el){
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  const field = el.dataset.field;
+  let val = el.value;
+  if(field === 'objectif'){ val = val === '' ? '' : Number(val); }
+  task[field] = val;
+  if(field === 'status'){ el.className = 'status-select ' + (val==='fait'?'st-fait':(val==='afaire'?'st-afaire':'st-empty')); }
+  if(field === 'priority'){
+    el.className = 'priority-select ' + (val ? 'pr-'+val : 'pr-empty');
+    const row = el.closest('tr.task-row');
+    if(row) row.className = 'task-row ' + (val ? 'row-'+val : 'row-empty');
+  }
+  await persistDay();
+  renderSummary();
+}
+
+async function addPersonToTask(id, personId){
+  if(!personId) return;
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  if(!task.personIds.includes(personId)) task.personIds.push(personId);
+  renderTable();
+  await persistDay();
+}
+async function removePersonFromTask(id, personId){
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  task.personIds = task.personIds.filter(pid => pid !== personId);
+  renderTable();
+  await persistDay();
+}
+async function removeTask(id){
+  if(!confirm('Supprimer cette tâche (pour ce jour uniquement) ?')) return;
+  dayData.tasks = dayData.tasks.filter(t => t.id !== id);
+  renderTable();
+  await persistDay();
+}
+
+function renderSummary(){
+  const f = currentFilters();
+  const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+
+  const totalObjectif = visible.reduce((s,t) => s + (Number(t.objectif)||0), 0);
+  const doneObjectif = visible.filter(t => t.status==='fait').reduce((s,t) => s + (Number(t.objectif)||0), 0);
+  const pct = totalObjectif > 0 ? Math.min(100, Math.round(doneObjectif/totalObjectif*100)) : 0;
+  const reached = totalObjectif > 0 && doneObjectif >= totalObjectif;
+
+  const box = document.getElementById('teamObjectif');
+  box.style.display = 'flex';
+  box.innerHTML = `
+    <div><div class="big-num ${reached?'reached':'notyet'}">${doneObjectif}</div><div class="label">réalisé</div></div>
+    <div style="color:var(--line-strong); font-size:22px;">/</div>
+    <div><div class="big-num">${totalObjectif}</div><div class="label">objectif total (${toFr(currentDate)})</div></div>
+    <div style="flex:1; min-width:160px;">
+      <div class="bar-track"><div class="bar-fill ${reached?'reached':''}" style="width:${pct}%"></div></div>
+      <div class="bar-caption">${pct}% de l'objectif atteint · ${visible.filter(t=>t.status==='fait').length} tâches faites sur ${visible.length}</div>
+    </div>
+  `;
+
+  const byPerson = {};
+  people.forEach(p => byPerson[p.id] = {name:p.name, objectif:0, done:0, color:personColor(p.id)});
+  byPerson['__none__'] = {name:'Non attribué', objectif:0, done:0, color:null};
+  visible.forEach(t => {
+    const targets = t.personIds.length ? t.personIds : ['__none__'];
+    targets.forEach(pid => {
+      const key = byPerson[pid] ? pid : '__none__';
+      byPerson[key].objectif += Number(t.objectif)||0;
+      if(t.status==='fait') byPerson[key].done += Number(t.objectif)||0;
+    });
+  });
+  const rows = Object.values(byPerson).filter(v => v.objectif > 0)
+    .sort((a,b) => b.objectif - a.objectif)
+    .map(v => {
+      const p2 = Math.min(100, Math.round(v.done/v.objectif*100));
+      const r2 = v.done >= v.objectif;
+      const dot = v.color ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${v.color};margin-right:6px;"></i>` : '';
+      return `<div class="bar-row">
+        <div class="bar-label">${dot}${escapeHtml(v.name)}</div>
+        <div class="bar-track"><div class="bar-fill ${r2?'reached':''}" style="width:${p2}%"></div></div>
+        <div class="bar-count">${v.done} / ${v.objectif}</div>
+      </div>`;
+    }).join('');
+  document.getElementById('summaryByPerson').style.display = rows ? 'block' : 'none';
+  document.getElementById('barsByPerson').innerHTML = rows;
+}
+
+/* ---------- add task / person ---------- */
+async function addTask(){
+  const name = prompt('Nom de la tâche :');
+  if(!name || !name.trim()) return;
+  dayData.tasks.push({id: cryptoId(), name: name.trim(), personIds: [], status: '', priority: '', objectif: ''});
+  renderTable();
+  await persistDay();
+}
+async function addPerson(){
+  const name = prompt('Nom de la personne à ajouter :');
+  if(!name || !name.trim()) return;
+  people.push({id: cryptoId(), name: name.trim()});
+  renderFilterOptions();
+  renderTable();
+  await persistPeople();
+}
+
+async function resetAll(){
+  if(!confirm("Réinitialiser complètement l'outil (toutes les personnes, tous les jours) ? Cette action est irréversible pour tout le monde.")) return;
+  const byName = {};
+  people = defaultPeople();
+  people.forEach(p => byName[p.name] = p.id);
+  const d0 = '2026-09-10';
+  daysIndex = [d0];
+  dayData = {tasks: defaultTasksForDay(byName)};
+  currentDate = d0;
+  await persistPeople();
+  await persistIndex();
+  await persistDay();
+  renderAll();
+}
+
+document.getElementById('btnAddTask').addEventListener('click', addTask);
+document.getElementById('btnAddPerson').addEventListener('click', addPerson);
+document.getElementById('btnClearDay').addEventListener('click', clearDayStatuses);
+document.getElementById('btnResetAll').addEventListener('click', resetAll);
+document.getElementById('filterPerson').addEventListener('change', renderTable);
+document.getElementById('filterPriority').addEventListener('change', renderTable);
+document.getElementById('filterStatus').addEventListener('change', renderTable);
+
+init();
+</script>
 </body>
 </html>
