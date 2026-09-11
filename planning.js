@@ -679,9 +679,39 @@ async function removeTask(id){
   });
 }
 
+const TASK_CATEGORIES = [
+  {label:'MAIL', tasks:['Édition mail','Mail prélèvement','Mail RIB','Affaire nouvelle']},
+  {label:'AVENANTS', tasks:['Avenants (mail)','Avenant (workflow résil 2 - sheet planning)']},
+  {label:'ECHANGES CLTS', tasks:['Échange client + échange résil J+1']},
+  {label:'EDITIONS', tasks:['Sheet "hors périmètre" matin','Certificat à générer','Tableau de bord édition']},
+  {label:'ECHANGE', tasks:['Échange édition TN','Échange édition BPA','Échange avenant sur acquisition','Échange avenant modification banque','Échange avenant acceptation banque','Échange suivi substi','Échange modif RIB','Échange attestation','Échange autre','Échange VIP']},
+  {label:'RESIL', tasks:['Échange résiliation','Mail résil']},
+];
+function normTaskName(s){ return (s||'').trim().toLowerCase(); }
+function renderCategoryTotals(visible){
+  const panel = document.getElementById('categoryTotalsPanel');
+  const table = document.getElementById('categoryTotalsTable');
+  const byName = {};
+  visible.forEach(t => {
+    const key = normTaskName(t.name);
+    byName[key] = (byName[key] || 0) + (Number(t.objectif) || 0);
+  });
+  let grandTotal = 0;
+  let rows = '';
+  TASK_CATEGORIES.forEach(cat => {
+    const sum = cat.tasks.reduce((s, name) => s + (byName[normTaskName(name)] || 0), 0);
+    grandTotal += sum;
+    rows += `<tr><td class="cat-label">${escapeHtml(cat.label)}</td><td class="cat-value">${sum}</td></tr>`;
+  });
+  rows += `<tr class="cat-total"><td class="cat-label">TOTAL</td><td class="cat-value">${grandTotal}</td></tr>`;
+  table.innerHTML = rows;
+  panel.style.display = 'block';
+}
+
 function renderSummary(){
   const f = currentFilters();
   const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+  renderCategoryTotals(visible);
 
   const totalObjectif = visible.reduce((s,t) => s + (Number(t.objectif)||0), 0);
   const doneObjectif = visible.filter(t => t.status==='fait').reduce((s,t) => s + (Number(t.objectif)||0), 0);
