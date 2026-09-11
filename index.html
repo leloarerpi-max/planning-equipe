@@ -83,10 +83,10 @@
   table.meal-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:8px 4px; }
   td.meal-date-cell{
     position:sticky; left:0; background:var(--panel); padding:8px 10px; font-weight:600;
-    white-space:nowrap; text-align:left; z-index:1;
+    white-space:nowrap; text-align:center; z-index:1;
   }
-  td.meal-date-cell .row-inner{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
-  td.meal-date-cell .remove-x{ opacity:0; }
+  td.meal-date-cell .row-inner{ position:relative; display:flex; align-items:center; justify-content:center; }
+  td.meal-date-cell .remove-x{ position:absolute; right:0; opacity:0; }
   tr:hover td.meal-date-cell .remove-x{ opacity:.6; }
   td.meal-date-cell .remove-x:hover{ opacity:1 !important; color:var(--danger); }
   th.meal-person-head{ position:relative; }
@@ -102,6 +102,15 @@
   td.meal-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
   td.meal-cell.filled{ }
   td.meal-cell.empty input{ color:var(--ink-soft); }
+  td.meal-cell.meal-12{ background:var(--teal-bg); }
+  td.meal-cell.meal-12 input{ color:var(--teal); font-weight:700; }
+  td.meal-cell.meal-13{ background:#DCE8F7; }
+  td.meal-cell.meal-13 input{ color:#2F5C8A; font-weight:700; }
+  tr.meal-month-summary td{
+    background:var(--panel); border-top:2px solid var(--ink); font-weight:700; font-size:12.5px;
+    padding:8px 6px; color:var(--ink-soft);
+  }
+  tr.meal-month-summary td.meal-date-cell{ font-family:'Fraunces', Georgia, serif; color:var(--ink); }
   tr.meal-week-sep td{
     border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
     font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
