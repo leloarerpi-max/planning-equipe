@@ -120,6 +120,8 @@ function updateCustomToolbarForType(){
   document.getElementById('btnAddColumn').style.display = isMeal ? 'none' : '';
   document.getElementById('btnAddRow').style.display = isMeal ? 'none' : '';
   document.getElementById('btnAddMealDate').style.display = isMeal ? '' : 'none';
+  document.getElementById('btnAddMealMonth').style.display = isMeal ? '' : 'none';
+  document.getElementById('btnSaveMealTemplate').style.display = isMeal ? '' : 'none';
   document.getElementById('btnAddMealPerson').style.display = isMeal ? '' : 'none';
   document.getElementById('btnConvertMealPlanning').style.display = isMeal ? 'none' : '';
 }
@@ -365,6 +367,77 @@ document.getElementById('btnAddMealDate').addEventListener('click', async () => 
   d.days.push({id: cryptoId(), date: iso});
   renderMealPlanningGrid();
   await persistCustomTab();
+});
+document.getElementById('btnAddMealMonth').addEventListener('click', async () => {
+  const now = new Date();
+  const suggestion = String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear();
+  const input = prompt('Mois à remplir (MM/AAAA) :', suggestion);
+  if(!input) return;
+  const m = input.trim().match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if(!m){ alert('Format invalide. Utilise MM/AAAA (ex: 10/2026).'); return; }
+  const month = parseInt(m[1], 10) - 1;
+  const year = parseInt(m[2], 10);
+  if(month < 0 || month > 11){ alert('Mois invalide (01 à 12).'); return; }
+
+  const d = activeCustomTabData;
+  const existing = new Set(d.days.map(x => x.date));
+  const added = [];
+  const cursor = new Date(year, month, 1);
+  while(cursor.getMonth() === month){
+    const day = cursor.getDay(); // 0 = dimanche, 6 = samedi
+    if(day >= 1 && day <= 5){
+      const iso = cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0')+'-'+String(cursor.getDate()).padStart(2,'0');
+      if(!existing.has(iso)){
+        d.days.push({id: cryptoId(), date: iso});
+        added.push(iso);
+      }
+    }
+    cursor.setDate(cursor.getDate()+1);
+  }
+  if(!added.length){ alert('Toutes les dates ouvrées de ce mois existent déjà.'); return; }
+
+  // If a template was saved, auto-fill the new days by cycling through it
+  // (matched to each new day's position among the newly-added dates).
+  if(Array.isArray(d.template) && d.template.length){
+    d.shifts = d.shifts || {};
+    const nameToId = {}; d.people.forEach(p => { nameToId[p.name] = p.id; });
+    added.sort();
+    added.forEach((iso, i) => {
+      const dayObj = d.days.find(x => x.date === iso);
+      if(!dayObj) return;
+      const templateRow = d.template[i % d.template.length];
+      Object.keys(templateRow).forEach(personName => {
+        const pid = nameToId[personName];
+        if(!pid) return; // person no longer exists / renamed
+        d.shifts[dayObj.id+'|'+pid] = templateRow[personName];
+      });
+    });
+  }
+
+  renderMealPlanningGrid();
+  await persistCustomTab();
+  logChange(`a ajouté ${added.length} jours ouvrés (${m[1]}/${m[2]}) au Planning Repas`);
+});
+document.getElementById('btnSaveMealTemplate').addEventListener('click', async () => {
+  const d = activeCustomTabData;
+  const sortedDays = [...d.days].sort((a,b) => a.date.localeCompare(b.date));
+  const filledDays = sortedDays.filter(day => d.people.some(p => (d.shifts||{})[day.id+'|'+p.id]));
+  if(!filledDays.length){
+    alert('Aucune case remplie à enregistrer comme modèle. Remplis d\u2019abord un planning, puis reviens ici.');
+    return;
+  }
+  if(!confirm(`Enregistrer le planning actuel (${filledDays.length} jour(s) remplis) comme modèle ? Il sera réappliqué automatiquement à chaque nouveau mois ajouté.`)) return;
+  const template = filledDays.map(day => {
+    const row = {};
+    d.people.forEach(p => {
+      const val = (d.shifts||{})[day.id+'|'+p.id];
+      if(val) row[p.name] = val;
+    });
+    return row;
+  });
+  d.template = template;
+  await persistCustomTab();
+  alert(`Modèle enregistré (${template.length} jour(s)). Il s\u2019appliquera automatiquement au prochain mois ajouté.`);
 });
 document.getElementById('btnAddMealPerson').addEventListener('click', async () => {
   const name = prompt('Nom de la personne à ajouter :');
