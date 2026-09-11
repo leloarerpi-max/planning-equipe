@@ -312,6 +312,11 @@
   .stat-card .stat-name{ font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
   .stat-card .stat-value{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:26px; }
 
+  table#categoryTotalsTable td{ border:1px solid var(--line); padding:7px 12px; }
+  table#categoryTotalsTable td.cat-label{ color:var(--ink-soft); }
+  table#categoryTotalsTable td.cat-value{ text-align:right; font-weight:700; }
+  table#categoryTotalsTable tr.cat-total td{ border-top:2px solid var(--ink); font-weight:800; background:var(--panel); }
+
   table.stats-matrix{ border-collapse:collapse; width:100%; font-size:12.5px; min-width:600px; }
   table.stats-matrix th, table.stats-matrix td{ border:1px solid var(--line); padding:6px 8px; text-align:center; white-space:nowrap; }
   table.stats-matrix thead th{ position:sticky; top:0; background:var(--panel); z-index:2; font-weight:700; }
@@ -354,6 +359,13 @@
   </header>
 
   <div class="team-objectif" id="teamObjectif" style="display:none"></div>
+
+  <div class="summary" id="categoryTotalsPanel" style="display:none; margin-top:0; margin-bottom:20px;">
+    <h2 style="font-size:16px;">Total du jour par catégorie</h2>
+    <div class="table-shell" style="max-width:340px;">
+      <table id="categoryTotalsTable" style="width:100%; border-collapse:collapse; font-size:13.5px;"></table>
+    </div>
+  </div>
 
   <div class="daybar" id="dayBar"></div>
 
