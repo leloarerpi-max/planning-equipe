@@ -309,7 +309,8 @@ function renderMealPlanningGrid(){
         lastWeek = wk;
       }
       const {wd, ddmm} = fmtMealDate(day.date);
-      html += `<tr><td class="meal-date-cell"><div class="row-inner"><span>${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span></span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette date">✕</button></div></td>`;
+      const isToday = day.date === todayIso();
+      html += `<tr class="${isToday ? 'meal-today-row' : ''}"><td class="meal-date-cell"><div class="row-inner"><span>${isToday ? '📍 ' : ''}${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span></span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette date">✕</button></div></td>`;
       d.people.forEach(p => {
         const key = day.id+'|'+p.id;
         const val = (d.shifts && d.shifts[key]) || '';
