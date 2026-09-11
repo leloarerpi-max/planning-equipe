@@ -494,15 +494,19 @@ function taskRowHtml(t){
     <td class="person-slot-cell">${slotSelect('helper', helperId, primaryId)}</td>`;
   }
 
-  return `<tr class="task-row ${rowCls}" data-task="${t.id}">
-    <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} /></td>
-    ${peopleCells}
-    <td class="status-cell"><select class="status-select ${stCls}" data-field="status" ${dis}>
+  const statusNombreCells = t.multiMode
+    ? `<td class="status-cell"></td><td class="obj-cell"></td>`
+    : `<td class="status-cell"><select class="status-select ${stCls}" data-field="status" ${dis}>
       <option value="" ${t.status===''?'selected':''}>—</option>
       <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
       <option value="afaire" ${t.status==='afaire'?'selected':''}>À faire</option>
     </select></td>
-    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${dis} /></td>
+    <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${dis} /></td>`;
+
+  return `<tr class="task-row ${rowCls}" data-task="${t.id}">
+    <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} /></td>
+    ${peopleCells}
+    ${statusNombreCells}
     <td>${(editable && isAdmin) ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
   </tr>`;
 }
