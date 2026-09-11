@@ -413,6 +413,7 @@ function latestDayDate(){
 function isDayEditable(){
   return isAdmin || currentDate === todayIso();
 }
+function textColorFor(bg){ return '#ffffff'; }
 function fmtDday(iso){
   const d = new Date(iso+'T00:00:00');
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
@@ -598,15 +599,17 @@ async function init(){
     if(!people){ people = defaultPeople(); await storageSet(PEOPLE_KEY, people); }
 
     daysIndex = await storageGet(INDEX_KEY);
+    const today = todayIso();
+
     if(!daysIndex || !daysIndex.length){
+      // Very first run ever: seed with today's date, not a hardcoded one.
       const byName = {}; people.forEach(p => byName[p.name] = p.id);
-      const d0 = '2026-09-10';
       const tasks = defaultTasksForDay(byName);
-      daysIndex = [d0];
-      currentDate = d0;
+      daysIndex = [today];
+      currentDate = today;
       dayData = {tasks};
-      setDayCache(d0, dayData);
-      await storageSet(dayKey(d0), dayData);
+      setDayCache(today, dayData);
+      await storageSet(dayKey(today), dayData);
       await storageSet(INDEX_KEY, daysIndex);
       attachDayListener(currentDate);
       attachIndexListener();
@@ -614,9 +617,28 @@ async function init(){
       renderAll();
       return;
     }
+
     daysIndex = [...daysIndex].sort();
-    currentDate = daysIndex.includes(todayIso()) ? todayIso() : latestDayDate();
-    dayData = await loadDayData(currentDate);
+
+    if(!daysIndex.includes(today)){
+      // A new calendar day started: auto-create it (same rule as "+ Nouveau jour"),
+      // cloned from the most recent existing day, statuses/objectifs/personnes cleared.
+      const latest = latestDayDate();
+      const latestData = await loadDayData(latest);
+      const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: 'afaire', objectif: '', personIds: []}));
+      daysIndex.push(today);
+      daysIndex.sort();
+      dayData = {tasks: clonedTasks};
+      setDayCache(today, dayData);
+      await storageSet(dayKey(today), dayData);
+      await storageSet(INDEX_KEY, daysIndex);
+      currentDate = today;
+      logChange(`nouvelle journée créée automatiquement (${toFr(today)})`);
+    } else {
+      currentDate = today;
+      dayData = await loadDayData(currentDate);
+    }
+
     attachDayListener(currentDate);
     attachIndexListener();
     attachPeopleListener();
