@@ -688,30 +688,26 @@ const TASK_CATEGORIES = [
   {label:'RESIL', tasks:['Échange résiliation','Mail résil']},
 ];
 function normTaskName(s){ return (s||'').trim().toLowerCase(); }
-function renderCategoryTotals(visible){
-  const panel = document.getElementById('categoryTotalsPanel');
-  const table = document.getElementById('categoryTotalsTable');
+function categoryTotalsBadgesHtml(visible){
   const byName = {};
   visible.forEach(t => {
     const key = normTaskName(t.name);
     byName[key] = (byName[key] || 0) + (Number(t.objectif) || 0);
   });
   let grandTotal = 0;
-  let rows = '';
+  let badges = '';
   TASK_CATEGORIES.forEach(cat => {
     const sum = cat.tasks.reduce((s, name) => s + (byName[normTaskName(name)] || 0), 0);
     grandTotal += sum;
-    rows += `<tr><td class="cat-label">${escapeHtml(cat.label)}</td><td class="cat-value">${sum}</td></tr>`;
+    badges += `<span class="cat-badge">${escapeHtml(cat.label)} <b>${sum}</b></span>`;
   });
-  rows += `<tr class="cat-total"><td class="cat-label">TOTAL</td><td class="cat-value">${grandTotal}</td></tr>`;
-  table.innerHTML = rows;
-  panel.style.display = 'block';
+  badges += `<span class="cat-badge cat-badge-total">TOTAL <b>${grandTotal}</b></span>`;
+  return badges;
 }
 
 function renderSummary(){
   const f = currentFilters();
   const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
-  renderCategoryTotals(visible);
 
   const totalObjectif = visible.reduce((s,t) => s + (Number(t.objectif)||0), 0);
   const doneObjectif = visible.filter(t => t.status==='fait').reduce((s,t) => s + (Number(t.objectif)||0), 0);
@@ -738,6 +734,7 @@ function renderSummary(){
       <div class="today-nums"><b>${doneObjectif}</b> / ${totalObjectif} réalisé · <b>${visible.filter(t=>t.status==='fait').length}</b> / ${visible.length} tâches faites</div>
       <div class="bar-track" style="width:220px;"><div class="bar-fill ${reached?'reached':''}" style="width:${pct}%"></div></div>
     </div>
+    <div class="cat-badges-row">${categoryTotalsBadgesHtml(visible)}</div>
   `;
 
   const byPerson = {};
