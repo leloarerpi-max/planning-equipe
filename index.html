@@ -374,7 +374,17 @@
     🔒 Ce n'est pas la date du jour — lecture seule. Seul le superviseur peut le modifier.
   </div>
 
-  <div class="filters">
+  <div class="table-shell" id="tableShell">
+    <div class="empty-note">Chargement…</div>
+  </div>
+
+  <div class="summary" id="summaryByPerson" style="display:none">
+    <h2>Objectif par personne</h2>
+    <p class="hint">Le volume "fait" vient des tâches du jour ; l'objectif (à droite) est modifiable pour chaque personne.</p>
+    <div id="barsByPerson"></div>
+  </div>
+
+  <div class="filters" style="margin-top:22px;">
     <select id="filterPerson"><option value="">Toutes les personnes</option></select>
     <select id="filterPriority">
       <option value="">Toutes les couleurs</option>
@@ -397,16 +407,6 @@
     <span><i class="swatch" style="background:#C9D8EB"></i>Bleu</span>
   </div>
 
-  <div class="table-shell" id="tableShell">
-    <div class="empty-note">Chargement…</div>
-  </div>
-
-  <div class="summary" id="summaryByPerson" style="display:none">
-    <h2>Objectif par personne</h2>
-    <p class="hint">Le volume "fait" vient des tâches du jour ; l'objectif (à droite) est modifiable pour chaque personne.</p>
-    <div id="barsByPerson"></div>
-  </div>
-
   <div class="toolbar" style="margin-top:22px;">
     <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
     <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
@@ -422,7 +422,7 @@
 
   <div class="summary" id="journalPanel" style="display:none;">
     <h2>Journal des modifications</h2>
-    <p class="hint">Les 100 dernières actions, les plus récentes en premier.</p>
+    <p class="hint">Les 100 dernières actions, les plus récentes en premier. <button class="btn-ghost" id="btnChangeMyName" style="font-size:12px;">✏️ Changer mon prénom affiché</button></p>
     <div id="journalLoading" class="empty-note" style="display:none;">Chargement…</div>
     <div id="journalList" style="max-height:400px; overflow:auto;"></div>
   </div>
