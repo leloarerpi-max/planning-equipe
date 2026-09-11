@@ -256,6 +256,16 @@ function mealWeekLabel(iso){
   const monday = new Date(d); monday.setDate(d.getDate() - (day-1));
   return monday.getFullYear()+'-'+String(monday.getMonth()+1).padStart(2,'0')+'-'+String(monday.getDate()).padStart(2,'0');
 }
+function mealCellClass(val){
+  const v = (val||'').toLowerCase().replace(/[^0-9]/g,'');
+  if(v.startsWith('12')) return 'meal-12';
+  if(v.startsWith('13')) return 'meal-13';
+  return '';
+}
+function mealMonthLabel(iso){
+  const d = new Date(iso+'T00:00:00');
+  return d.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+}
 function renderMealPlanningGrid(){
   const shell = document.getElementById('customTableShell');
   const d = activeCustomTabData;
@@ -265,18 +275,34 @@ function renderMealPlanningGrid(){
   }
   const sortedDays = [...d.days].sort((a,b) => a.date.localeCompare(b.date));
 
-  let html = '<table class="meal-table"><thead><tr><th style="text-align:left;">Date</th>';
+  let html = '<table class="meal-table"><thead><tr><th style="text-align:center;">Date</th>';
   d.people.forEach(p => {
     const c = mealPersonColor(d, p.id);
     html += `<th class="meal-person-head"><span class="meal-person-name" style="background:${c};color:#fff;">${escapeHtml(p.name)}<button class="meal-person-del" data-persondel="${p.id}" title="Supprimer cette personne">✕</button></span></th>`;
   });
   html += '</tr></thead><tbody>';
 
+  function monthSummaryRow(monthKey, counts){
+    let row = `<tr class="meal-month-summary" data-monthkey="${monthKey}"><td class="meal-date-cell">Total 12h — ${mealMonthLabel(monthKey+'-01')}</td>`;
+    d.people.forEach(p => { row += `<td data-personcount="${p.id}">${counts[p.id] || 0}</td>`; });
+    row += '</tr>';
+    return row;
+  }
+
   if(!sortedDays.length){
     html += `<tr><td colspan="${d.people.length+1}" class="empty-note">Aucune date. Clique sur "+ Ajouter une date".</td></tr>`;
   } else {
     let lastWeek = null;
-    sortedDays.forEach(day => {
+    let currentMonth = null;
+    let monthCounts = {};
+    sortedDays.forEach((day, idx) => {
+      const monthKey = day.date.slice(0,7);
+      if(currentMonth !== null && monthKey !== currentMonth){
+        html += monthSummaryRow(currentMonth, monthCounts);
+        monthCounts = {};
+      }
+      currentMonth = monthKey;
+
       const wk = mealWeekLabel(day.date);
       if(wk !== lastWeek){
         html += `<tr class="meal-week-sep"><td colspan="${d.people.length+1}">Semaine du ${fmtMealDate(wk).ddmm}</td></tr>`;
@@ -287,9 +313,15 @@ function renderMealPlanningGrid(){
       d.people.forEach(p => {
         const key = day.id+'|'+p.id;
         const val = (d.shifts && d.shifts[key]) || '';
-        html += `<td class="meal-cell ${val?'filled':'empty'}"><input type="text" value="${escapeHtml(val)}" data-day="${day.id}" data-person="${p.id}" placeholder="—" /></td>`;
+        const cls = mealCellClass(val);
+        if(cls === 'meal-12') monthCounts[p.id] = (monthCounts[p.id]||0) + 1;
+        html += `<td class="meal-cell ${val?'filled':'empty'} ${cls}"><input type="text" value="${escapeHtml(val)}" data-day="${day.id}" data-person="${p.id}" placeholder="—" /></td>`;
       });
       html += '</tr>';
+
+      if(idx === sortedDays.length-1){
+        html += monthSummaryRow(currentMonth, monthCounts);
+      }
     });
   }
   html += '</tbody></table>';
@@ -301,7 +333,9 @@ function renderMealPlanningGrid(){
       const key = inp.dataset.day + '|' + inp.dataset.person;
       if(inp.value.trim() === ''){ delete d.shifts[key]; }
       else { d.shifts[key] = inp.value.trim(); }
-      inp.closest('td').className = 'meal-cell ' + (inp.value.trim() ? 'filled' : 'empty');
+      const cls = mealCellClass(inp.value.trim());
+      inp.closest('td').className = 'meal-cell ' + (inp.value.trim() ? 'filled' : 'empty') + (cls ? ' '+cls : '');
+      updateMealMonthSummaryInPlace(shell, inp.dataset.day);
       await persistCustomTab();
     });
   });
@@ -337,6 +371,25 @@ function renderMealPlanningGrid(){
     });
   });
   wireMealNav(shell);
+}
+function updateMealMonthSummaryInPlace(shell, dayId){
+  const d = activeCustomTabData;
+  const day = d.days.find(x => x.id === dayId);
+  if(!day) return;
+  const monthKey = day.date.slice(0,7);
+  const row = shell.querySelector(`.meal-month-summary[data-monthkey="${monthKey}"]`);
+  if(!row) return;
+  const monthDayIds = new Set(d.days.filter(x => x.date.slice(0,7) === monthKey).map(x => x.id));
+  const counts = {};
+  Object.keys(d.shifts || {}).forEach(key => {
+    const [dId, pId] = key.split('|');
+    if(!monthDayIds.has(dId)) return;
+    if(mealCellClass(d.shifts[key]) === 'meal-12') counts[pId] = (counts[pId]||0) + 1;
+  });
+  d.people.forEach(p => {
+    const cell = row.querySelector(`[data-personcount="${p.id}"]`);
+    if(cell) cell.textContent = counts[p.id] || 0;
+  });
 }
 function wireMealNav(shell){
   const inputs = Array.from(shell.querySelectorAll('td.meal-cell input'));
