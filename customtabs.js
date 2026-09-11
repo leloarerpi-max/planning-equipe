@@ -35,6 +35,9 @@ function mealPersonColor(data, personId){
   if(idx < 0) return null;
   return MEAL_PALETTE[idx % MEAL_PALETTE.length];
 }
+function defaultChecklistData(){
+  return { type: 'checklist', rows: [] };
+}
 
 async function initCustomTabs(){
   customTabs = await storageGet(CUSTOMTABS_INDEX_KEY);
@@ -106,7 +109,7 @@ async function switchAppTab(tabId){
   document.getElementById('customTabTitle').textContent = tabMeta ? tabMeta.name : 'Onglet';
   document.getElementById('customTableShell').innerHTML = '<div class="empty-note">Chargement…</div>';
   activeCustomTabData = await storageGet(customTabKey(tabId));
-  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people)){
+  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows)){
     activeCustomTabData = defaultCustomTabData();
   }
   normalizeMealDataOnLoad(activeCustomTabData);
@@ -116,14 +119,20 @@ async function switchAppTab(tabId){
 }
 
 function updateCustomToolbarForType(){
-  const isMeal = activeCustomTabData && activeCustomTabData.type === 'mealplanning';
-  document.getElementById('btnAddColumn').style.display = isMeal ? 'none' : '';
-  document.getElementById('btnAddRow').style.display = isMeal ? 'none' : '';
+  const type = activeCustomTabData && activeCustomTabData.type;
+  const isMeal = type === 'mealplanning';
+  const isChecklist = type === 'checklist';
+  const isGeneric = !isMeal && !isChecklist;
+  document.getElementById('btnAddColumn').style.display = isGeneric ? '' : 'none';
+  document.getElementById('btnAddRow').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddMealDate').style.display = isMeal ? '' : 'none';
   document.getElementById('btnAddMealMonth').style.display = isMeal ? '' : 'none';
   document.getElementById('btnSaveMealTemplate').style.display = isMeal ? '' : 'none';
   document.getElementById('btnAddMealPerson').style.display = isMeal ? '' : 'none';
-  document.getElementById('btnConvertMealPlanning').style.display = isMeal ? 'none' : '';
+  document.getElementById('btnConvertMealPlanning').style.display = isGeneric ? '' : 'none';
+  document.getElementById('btnAddChecklistRow').style.display = isChecklist ? '' : 'none';
+  document.getElementById('btnImportExcel').style.display = isChecklist ? '' : 'none';
+  document.getElementById('btnConvertChecklist').style.display = isGeneric ? '' : 'none';
 }
 
 function attachCustomTabListener(tabId){
@@ -133,7 +142,7 @@ function attachCustomTabListener(tabId){
     if(!snap.exists()) return;
     let fresh;
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
-    if(!fresh || (!fresh.columns && !fresh.people)) return;
+    if(!fresh || (!fresh.columns && !fresh.people && !fresh.rows)) return;
     normalizeMealDataOnLoad(fresh);
     const active = document.activeElement;
     if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt typing
@@ -155,6 +164,10 @@ function setStatus2(elId, text, cls){ const el = document.getElementById(elId); 
 function renderCustomTable(){
   if(activeCustomTabData && activeCustomTabData.type === 'mealplanning'){
     renderMealPlanningGrid();
+    return;
+  }
+  if(activeCustomTabData && activeCustomTabData.type === 'checklist'){
+    renderChecklistTable();
     return;
   }
   const shell = document.getElementById('customTableShell');
@@ -561,5 +574,111 @@ async function deleteAppTab(tabId){
 }
 
 document.getElementById('btnDeleteTab').addEventListener('click', () => deleteAppTab(activeCustomTabId));
+
+/* ---------- Avenants WF (checklist importé depuis Excel) ---------- */
+function renderChecklistTable(){
+  const shell = document.getElementById('customTableShell');
+  const d = activeCustomTabData;
+  if(!d.rows.length){
+    shell.innerHTML = '<div class="empty-note">Aucune ligne. Importe un fichier Excel ou ajoute une ligne à la main.</div>';
+    return;
+  }
+  let html = '<table class="checklist-table"><thead><tr><th>Information</th><th style="text-align:center;">Fait</th><th></th></tr></thead><tbody>';
+  d.rows.forEach(row => {
+    html += `<tr data-rowid="${row.id}" class="${row.done ? 'checklist-done' : ''}">
+      <td class="checklist-text"><input type="text" value="${escapeHtml(row.text||'')}" data-field="text" /></td>
+      <td class="checklist-check"><input type="checkbox" data-field="done" ${row.done?'checked':''} /></td>
+      <td class="checklist-row-actions"><button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  shell.innerHTML = html;
+
+  shell.querySelectorAll('tr[data-rowid]').forEach(tr => {
+    const rowId = tr.dataset.rowid;
+    const row = d.rows.find(r => r.id === rowId);
+    tr.querySelector('[data-field="text"]').addEventListener('change', async (e) => {
+      row.text = e.target.value;
+      await persistCustomTab();
+    });
+    tr.querySelector('[data-field="done"]').addEventListener('change', async (e) => {
+      row.done = e.target.checked;
+      tr.className = row.done ? 'checklist-done' : '';
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-rowdel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const rowId = btn.dataset.rowdel;
+      const removedRow = d.rows.find(r => r.id === rowId);
+      d.rows = d.rows.filter(r => r.id !== rowId);
+      renderChecklistTable();
+      await persistCustomTab();
+      if(removedRow){
+        showUndoToast('Ligne supprimée', async () => {
+          d.rows.push(removedRow);
+          renderChecklistTable();
+          await persistCustomTab();
+        });
+      }
+    });
+  });
+  wireCustomTableNav(shell); // reuses the same generic up/down arrow-key navigation, works on any text input
+}
+
+document.getElementById('btnAddChecklistRow').addEventListener('click', async () => {
+  activeCustomTabData.rows.push({id: cryptoId(), text: '', done: false});
+  renderChecklistTable();
+  await persistCustomTab();
+});
+
+document.getElementById('btnImportExcel').addEventListener('click', () => document.getElementById('excelFileInput').click());
+document.getElementById('excelFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    alert("La librairie de lecture Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
+    return;
+  }
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const rows2d = XLSX.utils.sheet_to_json(firstSheet, {header:1});
+    let values = rows2d.map(r => (r && r[0] !== undefined && r[0] !== null) ? String(r[0]).trim() : '').filter(v => v !== '');
+    if(!values.length){ alert('Aucune donnée trouvée dans la première colonne de ce fichier.'); return; }
+    if(values.length && confirm(`Première ligne détectée : "${values[0]}"\n\nEst-ce un titre de colonne à ignorer (plutôt qu'une vraie donnée) ?`)){
+      values = values.slice(1);
+    }
+    if(!values.length){ alert('Plus aucune ligne à importer après avoir retiré le titre.'); return; }
+    const d = activeCustomTabData;
+    const existingTexts = new Set(d.rows.map(r => r.text));
+    let added = 0;
+    values.forEach(v => {
+      if(existingTexts.has(v)) return; // avoid duplicating identical lines on re-import
+      d.rows.push({id: cryptoId(), text: v, done: false});
+      added++;
+    });
+    renderChecklistTable();
+    await persistCustomTab();
+    logChange(`a importé ${added} ligne(s) depuis un fichier Excel dans « ${(customTabs.find(t=>t.id===activeCustomTabId)||{}).name || 'Avenants WF'} »`);
+    alert(`${added} ligne(s) importée(s)${added < values.length ? ` (${values.length - added} déjà présente(s), ignorée(s))` : ''}.`);
+  } catch(err){
+    alert("Impossible de lire ce fichier. Vérifie qu'il s'agit bien d'un fichier Excel (.xlsx) ou CSV valide.");
+  }
+});
+
+document.getElementById('btnConvertChecklist').addEventListener('click', async () => {
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
+  if(!confirm('Transformer cet onglet en liste "Avenants WF" (Information + case Fait) ? Le contenu actuel de ce tableau sera remplacé.')) return;
+  activeCustomTabData = defaultChecklistData();
+  renderCustomTable();
+  updateCustomToolbarForType();
+  await persistCustomTab();
+});
 
 initCustomTabs();
