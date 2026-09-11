@@ -70,7 +70,7 @@ function attachCustomTabsIndexListener(){
 
 function renderAppTabs(){
   const bar = document.getElementById('appTabs');
-  let html = `<button class="apptab-btn ${activeAppTab==='planning'?'active':''}" data-apptab="planning">Planning &amp; Objectif</button>`;
+  let html = `<button class="apptab-btn ${activeAppTab==='planning'?'active':''}" data-apptab="planning">Planning</button>`;
   customTabs.forEach(t => {
     html += `<button class="apptab-btn ${activeAppTab===t.id?'active':''}" data-apptab="${t.id}">${escapeHtml(t.name)}<span class="apptab-del" data-apptab-del="${t.id}" title="Supprimer cet onglet (superviseur)">✕</span></button>`;
   });
