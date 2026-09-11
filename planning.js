@@ -16,11 +16,20 @@ const PEOPLE_KEY = 'po:people';
 const INDEX_KEY = 'po:days-index';
 function dayKey(d){ return 'po:day:' + d; }
 const PERSON_PALETTE = ['#6FA8DC', '#A9564A', '#8E7CC3', '#D9A63C', '#4F9D6E', '#4A7FC1', '#C2708C', '#7FA0A6'];
+const EXPRESS_ID = '__express__';
+const EXPRESS_NAME = 'Express';
+const EXPRESS_COLOR = '#5A5550';
 
 function personColor(personId){
+  if(personId === EXPRESS_ID) return EXPRESS_COLOR;
   const idx = people.findIndex(p => p.id === personId);
   if(idx < 0) return null;
   return PERSON_PALETTE[idx % PERSON_PALETTE.length];
+}
+function personNameById(personId){
+  if(personId === EXPRESS_ID) return EXPRESS_NAME;
+  const p = people.find(x => x.id === personId);
+  return p ? p.name : '';
 }
 function latestDayDate(){
   if(!daysIndex.length) return null;
@@ -469,6 +478,7 @@ function taskRowHtml(t){
   const helperId = t.personIds[1] || '';
   function slotSelect(field, value, excludeId){
     const opts = people.filter(p => p.id !== excludeId);
+    if(excludeId !== EXPRESS_ID) opts.push({id: EXPRESS_ID, name: EXPRESS_NAME});
     const c = value ? personColor(value) : null;
     const style = c ? `background:${c};color:${textColorFor(c)};` : '';
     return `<select class="person-slot-select ${value?'has-person':''}" data-slot="${field}" style="${style}" ${dis}>
@@ -641,7 +651,7 @@ async function onPersonSlotChange(id, slot, value){
   task.personIds = next;
   renderTable();
   await syncTask(id);
-  const pname = value ? (people.find(p => p.id === value)?.name || '?') : '(retiré)';
+  const pname = value ? (personNameById(value) || '?') : '(retiré)';
   logChange(`a mis ${pname} en ${slot === 'primary' ? 'Personne' : 'Aide'} sur « ${task.name} »`);
 }
 async function onChecklistToggle(id, personId, checked){
