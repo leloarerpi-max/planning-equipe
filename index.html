@@ -251,7 +251,7 @@
   <div class="daybar" id="dayBar"></div>
 
   <div class="archive-banner" id="archiveBanner" style="display:none;">
-    🔒 Jour archivé — lecture seule pour ce jour passé. Seul le superviseur peut le modifier.
+    🔒 Ce n'est pas la date du jour — lecture seule. Seul le superviseur peut le modifier.
   </div>
 
   <div class="filters">
@@ -411,7 +411,7 @@ function latestDayDate(){
   return [...daysIndex].sort().slice(-1)[0];
 }
 function isDayEditable(){
-  return isAdmin || currentDate === latestDayDate();
+  return isAdmin || currentDate === todayIso();
 }
 function fmtDday(iso){
   const d = new Date(iso+'T00:00:00');
@@ -614,7 +614,8 @@ async function init(){
       renderAll();
       return;
     }
-    currentDate = daysIndex[daysIndex.length-1];
+    daysIndex = [...daysIndex].sort();
+    currentDate = daysIndex.includes(todayIso()) ? todayIso() : latestDayDate();
     dayData = await loadDayData(currentDate);
     attachDayListener(currentDate);
     attachIndexListener();
@@ -622,7 +623,7 @@ async function init(){
     renderAll();
   } catch(err){
     document.getElementById('tableShell').innerHTML =
-      '<div class="empty-note">Un problème est survenu au chargement. <button class="btn" id="btnRetryInit" style="margin-left:8px;">Réessayer</button></div>';
+      `<div class="empty-note">Un problème est survenu au chargement (${escapeHtml(String(err && err.message || err))}). <button class="btn" id="btnRetryInit" style="margin-left:8px;">Réessayer</button></div>`;
     const btn = document.getElementById('btnRetryInit');
     if(btn) btn.addEventListener('click', init);
   }
@@ -723,7 +724,7 @@ function renderDayBar(){
       delete dayCache[d];
       await persistIndex();
       if(currentDate === d){
-        currentDate = daysIndex[daysIndex.length-1];
+        currentDate = latestDayDate();
         dayData = await loadDayData(currentDate);
         attachDayListener(currentDate);
       }
@@ -1356,7 +1357,7 @@ async function importData(e){
   try{
     Object.keys(dayCache).forEach(k => delete dayCache[k]);
     people = bundle.people;
-    daysIndex = bundle.daysIndex;
+    daysIndex = [...bundle.daysIndex].sort();
     await persistPeople();
     await persistIndex();
     for(const d of daysIndex){
@@ -1364,7 +1365,7 @@ async function importData(e){
       setDayCache(d, dayPayload);
       await storageSet(dayKey(d), dayPayload);
     }
-    currentDate = daysIndex[daysIndex.length-1] || null;
+    currentDate = latestDayDate();
     if(currentDate){
       dayData = await loadDayData(currentDate, {force:true});
       attachDayListener(currentDate);
