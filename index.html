@@ -512,7 +512,7 @@ function defaultTasksForDay(byName){
   return raw.map(([name, persons, status, objectif, priority]) => ({
     id: cryptoId(), name,
     personIds: persons.map(n => byName[n]).filter(Boolean),
-    status: objectif === 0 ? 'fait' : 'afaire', priority: priority || '',
+    status: (objectif===null||objectif===undefined) ? '' : (objectif === 0 ? 'fait' : 'afaire'), priority: priority || '',
     objectif: (objectif===null||objectif===undefined) ? '' : objectif,
     multiMode: name === 'Vérif se mail'
   }));
@@ -625,7 +625,7 @@ async function init(){
       // cloned from the most recent existing day, statuses/objectifs/personnes cleared.
       const latest = latestDayDate();
       const latestData = await loadDayData(latest);
-      const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: 'afaire', objectif: '', personIds: []}));
+      const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
       daysIndex.push(today);
       daysIndex.sort();
       dayData = {tasks: clonedTasks};
@@ -668,21 +668,26 @@ async function persistDay(){
 // changed a different task in the meantime, that change is not lost.
 async function syncTask(taskId){
   setStatus('Enregistrement…', 'saving');
-  const localTask = dayData.tasks.find(t => t.id === taskId);
   let serverDay = await storageGet(dayKey(currentDate));
   if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
-  let found = false;
-  let mergedTasks = serverDay.tasks.map(t => {
-    if(t.id === taskId){ found = true; return localTask ? {...localTask} : t; }
-    return t;
-  });
-  if(!found && localTask) mergedTasks.push({...localTask});
+  // Use our current local tasks as the base — this naturally includes every
+  // local edit made so far, even ones from another syncTask() call that's
+  // still in flight. We only fold in tasks that exist on the server but not
+  // locally (e.g. a teammate added one while we were mid-edit).
+  const localTasks = dayData.tasks;
+  const localIds = new Set(localTasks.map(t => t.id));
+  const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
+  const mergedTasks = [...localTasks, ...extraFromServer];
   const merged = {tasks: mergedTasks};
   const ok = await storageSet(dayKey(currentDate), merged);
   if(ok){
+    // Only force a full re-render if we actually pulled in something new
+    // from someone else — otherwise a rebuild here would steal focus
+    // mid-typing/navigation.
+    const needsRerender = extraFromServer.length > 0;
     dayData = merged;
     setDayCache(currentDate, dayData);
-    renderTable();
+    if(needsRerender) renderTable(); else renderSummary();
     setStatus('Enregistré', '');
     setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
   } else {
@@ -693,13 +698,17 @@ async function syncTask(taskId){
 async function syncTaskRemoval(taskId){
   setStatus('Enregistrement…', 'saving');
   let serverDay = await storageGet(dayKey(currentDate));
-  if(!serverDay || !serverDay.tasks) serverDay = {tasks: dayData.tasks};
-  const merged = {tasks: serverDay.tasks.filter(t => t.id !== taskId)};
+  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
+  const localTasks = dayData.tasks.filter(t => t.id !== taskId);
+  const localIds = new Set(localTasks.map(t => t.id));
+  const extraFromServer = serverDay.tasks.filter(t => t.id !== taskId && !localIds.has(t.id));
+  const merged = {tasks: [...localTasks, ...extraFromServer]};
   const ok = await storageSet(dayKey(currentDate), merged);
   if(ok){
+    const needsRerender = extraFromServer.length > 0;
     dayData = merged;
     setDayCache(currentDate, dayData);
-    renderTable();
+    if(needsRerender) renderTable();
     setStatus('Enregistré', '');
     setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
   } else {
@@ -786,7 +795,7 @@ async function createNewDay(){
     return;
   }
   // Clone current day's tasks: keep name/priority, reset status to "À faire", clear objectif and personnes
-  const clonedTasks = dayData.tasks.map(t => ({...t, id: cryptoId(), status: 'afaire', objectif: '', personIds: []}));
+  const clonedTasks = dayData.tasks.map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
   daysIndex.push(iso);
   daysIndex.sort();
   currentDate = iso;
@@ -957,6 +966,15 @@ function wireObjNav(shell){
   });
 }
 
+function updateStatusSelectInPlace(taskId, status){
+  const row = document.querySelector(`tr[data-task="${taskId}"]`);
+  if(!row) return;
+  const sel = row.querySelector('.status-select');
+  if(!sel) return;
+  sel.value = status;
+  sel.className = 'status-select ' + (status==='fait'?'st-fait':(status==='afaire'?'st-afaire':'st-empty'));
+}
+
 async function onFieldChange(id, el){
   if(!isDayEditable()) return;
   const task = dayData.tasks.find(t => t.id === id);
@@ -966,10 +984,13 @@ async function onFieldChange(id, el){
   if(field === 'objectif'){ val = val === '' ? '' : Number(val); }
   const fieldLabels = {name:'le nom', priority:'la couleur', status:'le statut', objectif:'le nombre'};
   task[field] = val;
-  let forcedFait = false;
-  if(field === 'objectif' && val === 0 && task.status !== 'fait'){
-    task.status = 'fait';
-    forcedFait = true;
+  let statusChanged = false;
+  if(field === 'objectif'){
+    const newStatus = (val === '') ? '' : (val === 0 ? 'fait' : 'afaire');
+    if(task.status !== newStatus){
+      task.status = newStatus;
+      statusChanged = true;
+    }
   }
   if(field === 'status'){
     el.className = 'status-select ' + (val==='fait'?'st-fait':(val==='afaire'?'st-afaire':'st-empty'));
@@ -992,10 +1013,11 @@ async function onFieldChange(id, el){
     if(row) row.className = 'task-row ' + (val ? 'row-'+val : 'row-empty');
   }
   await syncTask(id);
-  if(forcedFait) renderTable(); else renderSummary();
+  if(statusChanged) updateStatusSelectInPlace(id, task.status);
+  renderSummary();
   const label = fieldLabels[field] || field;
   logChange(`a modifié ${label} de « ${task.name} » → ${val === '' ? '(vide)' : val}`);
-  if(forcedFait) logChange(`« ${task.name} » passée automatiquement en Fait (Nombre = 0)`);
+  if(statusChanged) logChange(`« ${task.name} » statut ajusté automatiquement → ${task.status === '' ? '(vide)' : (task.status === 'fait' ? 'Fait' : 'À faire')} (Nombre = ${val === '' ? 'vide' : val})`);
 }
 
 async function onPersonSlotChange(id, slot, value){
