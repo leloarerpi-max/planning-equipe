@@ -343,12 +343,14 @@
   }
   .multimode-toggle:hover{ border-color:var(--violet); color:var(--violet); }
 
-  td.checklist-cell{ padding:6px; text-align:left; }
-  .checklist-group{ display:flex; flex-wrap:wrap; gap:6px; }
+  td.checklist-cell{ padding:8px; text-align:center; }
+  .checklist-group{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; }
   .checklist-item{
-    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:12px;
-    padding:4px 10px 4px 8px; font-size:12px; font-weight:600; color:var(--ink-soft); background:#fff; cursor:pointer;
+    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:14px;
+    padding:5px 12px 5px 9px; font-size:12px; font-weight:600; color:var(--ink-soft); background:#fff; cursor:pointer;
+    transition:border-color .15s ease, box-shadow .15s ease;
   }
+  .checklist-item:hover{ border-color:var(--violet); }
   .checklist-item input{ margin:0; cursor:pointer; }
 
   td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
