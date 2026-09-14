@@ -55,7 +55,22 @@ async function logChange(text){
   try{
     const name = myName || 'Quelqu\u2019un';
     await fbDb.ref(dbPath('po:changelog')).push({ ts: Date.now(), name, text });
+    if(Math.random() < 0.08) trimChangelog(500); // ménage occasionnel en arrière-plan, best-effort
   } catch(e){ /* logging is best-effort, never blocks the app */ }
+}
+async function trimChangelog(maxEntries){
+  try{
+    const ref = fbDb.ref(dbPath('po:changelog'));
+    const snap = await ref.orderByKey().once('value');
+    const obj = snap.val();
+    if(!obj) return;
+    const keys = Object.keys(obj); // les clés générées par push() sont déjà dans l'ordre chronologique
+    if(keys.length <= maxEntries) return;
+    const toRemove = keys.slice(0, keys.length - maxEntries);
+    const updates = {};
+    toRemove.forEach(k => { updates[k] = null; });
+    await ref.update(updates);
+  } catch(e){ /* nettoyage best-effort, ne doit jamais bloquer l'app */ }
 }
 function fmtLogTime(ts){
   const d = new Date(ts);
@@ -102,6 +117,12 @@ async function storageSet(key, val){
     } catch(e){ /* try again */ }
   }
   return false;
+}
+async function storageDelete(key){
+  try{
+    await fbDb.ref(dbPath(key)).remove();
+    return true;
+  } catch(e){ return false; }
 }
 
 document.getElementById('btnToggleAdmin').addEventListener('click', toggleAdmin);
