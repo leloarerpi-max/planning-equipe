@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planning</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%85</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -38,9 +37,6 @@
   }
   .wrap{ max-width:1060px; margin:0 auto; padding:28px 16px 60px; }
   header{ margin-bottom:16px; }
-  .header-brand{ display:flex; align-items:center; gap:12px; }
-  .header-brand img.app-logo{ height:40px; width:40px; border-radius:8px; flex-shrink:0; object-fit:contain; }
-  .header-brand .header-titles{ min-width:0; }
 
   .apptabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; border-bottom:2px solid var(--line-strong); }
   .apptab-btn{
@@ -124,6 +120,38 @@
   tr.meal-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
   tr.meal-today-row td.meal-date-cell{ color:var(--violet); font-weight:800; }
+
+  /* Suivi Excel (import EASY_SUIVI : une ligne par jour, colonnes = indicateurs) */
+  table.suivi-table{ border-collapse:collapse; width:100%; min-width:1400px; font-size:12.5px; }
+  table.suivi-table th, table.suivi-table td{ border:1px solid var(--line); padding:0; text-align:center; }
+  table.suivi-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:8px 6px; white-space:nowrap; font-size:11.5px; }
+  td.suivi-date-cell{
+    position:sticky; left:0; background:var(--panel); padding:8px 10px; font-weight:600;
+    white-space:nowrap; text-align:center; z-index:1;
+  }
+  td.suivi-date-cell .row-inner{ position:relative; display:flex; align-items:center; justify-content:center; }
+  td.suivi-date-cell .remove-x{ position:absolute; right:0; opacity:0; }
+  tr:hover td.suivi-date-cell .remove-x{ opacity:.6; }
+  td.suivi-date-cell .remove-x:hover{ opacity:1 !important; color:var(--danger); }
+  td.suivi-cell{ padding:0; }
+  td.suivi-cell input{
+    width:100%; min-width:76px; border:none; background:transparent; font-family:inherit; font-size:12.5px; font-weight:600;
+    text-align:center; padding:9px 4px; color:var(--ink);
+  }
+  td.suivi-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
+  tr.suivi-month-summary td{
+    background:var(--panel); border-top:2px solid var(--ink); font-weight:700; font-size:11.5px;
+    padding:8px 4px; color:var(--ink-soft);
+  }
+  tr.suivi-month-summary td.suivi-date-cell{ font-family:'Fraunces', Georgia, serif; color:var(--ink); }
+  tr.suivi-week-sep td{
+    border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
+    font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
+  }
+  tr.suivi-today-row td{ background:var(--violet-bg) !important; box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
+  tr.suivi-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
+  tr.suivi-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
+  tr.suivi-today-row td.suivi-date-cell{ color:var(--violet); font-weight:800; }
 
   /* Avenants WF (checklist importé depuis Excel) */
   table.checklist-table{ border-collapse:collapse; width:100%; min-width:420px; font-size:13.5px; }
@@ -405,13 +433,8 @@
 
   <section id="app-tab-planning" class="app-tab-section">
   <header>
-    <div class="header-brand">
-      <img class="app-logo" src="data:image/png;base64,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" alt="Logo" />
-      <div class="header-titles">
-        <h1>Planning</h1>
-        <p class="subtitle">Liste de tâches par jour : statut, priorité, personnes assignées et objectif. Chaque nouveau jour repart à zéro sur les statuts, mais l'historique des jours précédents reste consultable.</p>
-      </div>
-    </div>
+    <h1>Planning</h1>
+    <p class="subtitle">Liste de tâches par jour : statut, priorité, personnes assignées et objectif. Chaque nouveau jour repart à zéro sur les statuts, mais l'historique des jours précédents reste consultable.</p>
   </header>
 
   <div class="team-objectif" id="teamObjectif" style="display:none"></div>
@@ -510,9 +533,13 @@
       <button class="btn" id="btnAddPhoneSlot" style="display:none;">+ Ajouter un créneau</button>
       <button class="btn" id="btnAddPhonePerson" style="display:none;">+ Ajouter une personne</button>
       <button class="btn" id="btnSavePhoneTemplate" style="display:none;">💾 Enregistrer ce planning comme modèle</button>
+      <button class="btn" id="btnAddSuiviDate" style="display:none;">+ Ajouter une date</button>
+      <button class="btn" id="btnImportSuiviExcel" style="display:none;">📥 Importer le fichier EASY_SUIVI</button>
+      <input type="file" id="suiviExcelFileInput" accept=".xlsx,.xls" style="display:none;" />
       <button class="btn-ghost" id="btnConvertMealPlanning" style="opacity:.7;">🍽️ Transformer en Planning Repas</button>
       <button class="btn-ghost" id="btnConvertChecklist" style="opacity:.7;">📋 Transformer en Avenants WF</button>
       <button class="btn-ghost" id="btnConvertPhonePlanning" style="opacity:.7;">📞 Transformer en Planning Tel</button>
+      <button class="btn-ghost" id="btnConvertSuivi" style="opacity:.7;">🧮 Transformer en Suivi Excel</button>
       <button class="btn-ghost" id="btnDeleteTab" style="margin-left:auto; opacity:.45;" title="Réservé au superviseur">Supprimer cet onglet</button>
     </div>
     <div class="status" id="customStatus"></div>
