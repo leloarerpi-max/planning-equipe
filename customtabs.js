@@ -1202,7 +1202,7 @@ async function findSuiviTab(){
   }
   return null;
 }
-async function reportCategoryTotalsToSuivi(dateIso, catTotals){
+async function reportCategoryTotalsToSuivi(dateIso, catTotals, extraValues){
   const found = await findSuiviTab();
   if(!found) return {ok:false, reason:'not-found'};
   const data = found.data;
@@ -1217,6 +1217,12 @@ async function reportCategoryTotalsToSuivi(dateIso, catTotals){
     row.values[colId] = c.sum;
     count++;
   });
+  if(extraValues){
+    Object.keys(extraValues).forEach(colId => {
+      row.values[colId] = extraValues[colId];
+      count++;
+    });
+  }
   await storageSet(customTabKey(found.id), data);
   if(activeCustomTabId === found.id){
     activeCustomTabData = data;
