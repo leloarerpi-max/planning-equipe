@@ -985,20 +985,26 @@ async function computeAndRenderStats(){
   const loading = document.getElementById('statsLoading');
   const totalsEl = document.getElementById('statsTotals');
   const tableShell = document.getElementById('statsTableShell');
+  const echangesShell = document.getElementById('statsEchangesShell');
   loading.style.display = 'block';
   totalsEl.innerHTML = '';
   tableShell.innerHTML = '';
+  echangesShell.innerHTML = '';
 
   // Load every day (cache avoids re-fetching days already seen this session)
-  const allDays = await Promise.all(daysIndex.map(d => loadDayData(d)));
+  const allDaysWithDate = await Promise.all(daysIndex.map(async d => ({date: d, data: await loadDayData(d)})));
 
   const perPersonTotal = {}; // personId -> completed count
   const perPersonTask = {};  // personId -> { taskName -> count }
   const taskNamesSet = new Set();
   people.forEach(p => { perPersonTotal[p.id] = 0; perPersonTask[p.id] = {}; });
 
-  allDays.forEach(day => {
-    (day.tasks || []).forEach(t => {
+  const echangesClientNames = (TASK_CATEGORIES.find(c => c.label === 'ECHANGES CLTS') || {tasks:[]}).tasks.map(normTaskName);
+  const monthlyEchanges = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }
+
+  allDaysWithDate.forEach(({date, data}) => {
+    const monthKey = date.slice(0,7);
+    (data.tasks || []).forEach(t => {
       const nameKey = (t.name || '').trim().toUpperCase();
       if(!nameKey) return;
       taskNamesSet.add(nameKey);
@@ -1007,6 +1013,16 @@ async function computeAndRenderStats(){
           if(!(pid in perPersonTotal)) return; // person no longer exists
           perPersonTotal[pid] += 1;
           perPersonTask[pid][nameKey] = (perPersonTask[pid][nameKey] || 0) + 1;
+        });
+      }
+      if(echangesClientNames.includes(normTaskName(t.name))){
+        const ids = t.personIds || [];
+        if(!ids.length) return;
+        const share = (Number(t.objectif) || 0) / ids.length;
+        ids.forEach(pid => {
+          if(!people.some(p => p.id === pid)) return; // person no longer exists
+          monthlyEchanges[monthKey] = monthlyEchanges[monthKey] || {};
+          monthlyEchanges[monthKey][pid] = (monthlyEchanges[monthKey][pid] || 0) + share;
         });
       }
     });
@@ -1031,25 +1047,49 @@ async function computeAndRenderStats(){
 
   if(!taskNames.length || !people.length){
     tableShell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>';
-    return;
+  } else {
+    let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Tâche</th>';
+    people.forEach(p => { html += `<th>${escapeHtml(p.name)}</th>`; });
+    html += '</tr></thead><tbody>';
+    taskNames.forEach(name => {
+      html += `<tr><td class="stats-task-name">${escapeHtml(name)}</td>`;
+      const rowCounts = people.map(p => perPersonTask[p.id][name] || 0);
+      const rowMax = Math.max(...rowCounts, 0);
+      people.forEach((p, i) => {
+        const count = rowCounts[i];
+        const cls = count === 0 ? 'stats-count-0' : (count === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+        html += `<td class="${cls}">${count}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    tableShell.innerHTML = html;
   }
 
-  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Tâche</th>';
-  people.forEach(p => { html += `<th>${escapeHtml(p.name)}</th>`; });
-  html += '</tr></thead><tbody>';
-  taskNames.forEach(name => {
-    html += `<tr><td class="stats-task-name">${escapeHtml(name)}</td>`;
-    const rowCounts = people.map(p => perPersonTask[p.id][name] || 0);
-    const rowMax = Math.max(...rowCounts, 0);
-    people.forEach((p, i) => {
-      const count = rowCounts[i];
-      const cls = count === 0 ? 'stats-count-0' : (count === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
-      html += `<td class="${cls}">${count}</td>`;
+  // Échanges clients par personne et par mois
+  const monthKeys = Object.keys(monthlyEchanges).sort();
+  if(!monthKeys.length || !people.length){
+    echangesShell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>';
+  } else {
+    let html2 = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+    people.forEach(p => { html2 += `<th>${escapeHtml(p.name)}</th>`; });
+    html2 += '<th>Total</th></tr></thead><tbody>';
+    monthKeys.forEach(mk => {
+      html2 += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+      const rowVals = people.map(p => Math.round((monthlyEchanges[mk][p.id] || 0) * 10) / 10);
+      const rowMax = Math.max(...rowVals, 0);
+      let rowTotal = 0;
+      people.forEach((p, i) => {
+        const v = rowVals[i];
+        rowTotal += v;
+        const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+        html2 += `<td class="${cls}">${v || ''}</td>`;
+      });
+      html2 += `<td style="font-weight:700;">${Math.round(rowTotal*10)/10}</td></tr>`;
     });
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  tableShell.innerHTML = html;
+    html2 += '</tbody></table>';
+    echangesShell.innerHTML = html2;
+  }
 }
 
 document.getElementById('btnExport').addEventListener('click', exportData);
