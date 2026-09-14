@@ -476,9 +476,10 @@ function taskRowHtml(t){
   const rowCls = t.priority ? 'row-'+t.priority : 'row-empty';
   const primaryId = t.personIds[0] || '';
   const helperId = t.personIds[1] || '';
-  function slotSelect(field, value, excludeId){
-    const opts = people.filter(p => p.id !== excludeId);
-    if(excludeId !== EXPRESS_ID) opts.push({id: EXPRESS_ID, name: EXPRESS_NAME});
+  const helper2Id = t.personIds[2] || '';
+  function slotSelect(field, value, excludeIds){
+    const opts = people.filter(p => !excludeIds.includes(p.id));
+    if(!excludeIds.includes(EXPRESS_ID)) opts.push({id: EXPRESS_ID, name: EXPRESS_NAME});
     const c = value ? personColor(value) : null;
     const style = c ? `background:${c};color:${textColorFor(c)};` : '';
     return `<select class="person-slot-select ${value?'has-person':''}" data-slot="${field}" style="${style}" ${dis}>
@@ -498,10 +499,11 @@ function taskRowHtml(t){
         <span>${checked?'✓ ':''}${escapeHtml(p.name)}</span>
       </label>`;
     }).join('');
-    peopleCells = `<td class="person-slot-cell checklist-cell" colspan="2"><div class="checklist-group">${boxes}</div></td>`;
+    peopleCells = `<td class="person-slot-cell checklist-cell" colspan="3"><div class="checklist-group">${boxes}</div></td>`;
   } else {
-    peopleCells = `<td class="person-slot-cell">${slotSelect('primary', primaryId, helperId)}</td>
-    <td class="person-slot-cell">${slotSelect('helper', helperId, primaryId)}</td>`;
+    peopleCells = `<td class="person-slot-cell">${slotSelect('primary', primaryId, [helperId, helper2Id].filter(Boolean))}</td>
+    <td class="person-slot-cell">${slotSelect('helper', helperId, [primaryId, helper2Id].filter(Boolean))}</td>
+    <td class="person-slot-cell">${slotSelect('helper2', helper2Id, [primaryId, helperId].filter(Boolean))}</td>`;
   }
 
   const statusNombreCells = t.multiMode
@@ -547,7 +549,7 @@ function renderTable(){
   if(!visible.length){
     shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
   } else {
-    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
     visible.forEach(t => { html += taskRowHtml(t); });
     html += '</tbody></table>';
     shell.innerHTML = html;
@@ -642,17 +644,19 @@ async function onPersonSlotChange(id, slot, value){
   if(!isDayEditable()) return;
   const task = dayData.tasks.find(t => t.id === id);
   if(!task) return;
-  const primary = task.personIds[0] || '';
-  const helper = task.personIds[1] || '';
-  let next = slot === 'primary' ? [value, helper] : [primary, value];
-  next = next.filter(v => v); // drop empty slots
-  // guard against picking the same person twice
-  if(next.length === 2 && next[0] === next[1]) next = [next[slot === 'primary' ? 0 : 1]];
-  task.personIds = next;
+  const slotIndex = {primary:0, helper:1, helper2:2}[slot];
+  const arr = [task.personIds[0]||'', task.personIds[1]||'', task.personIds[2]||''];
+  arr[slotIndex] = value;
+  // deux emplacements ne peuvent pas contenir la même personne : on vide l'autre le cas échéant
+  if(value){
+    for(let i=0;i<3;i++){ if(i !== slotIndex && arr[i] === value) arr[i] = ''; }
+  }
+  task.personIds = arr.filter(v => v);
   renderTable();
   await syncTask(id);
   const pname = value ? (personNameById(value) || '?') : '(retiré)';
-  logChange(`a mis ${pname} en ${slot === 'primary' ? 'Personne' : 'Aide'} sur « ${task.name} »`);
+  const slotLabel = slot === 'primary' ? 'Personne' : (slot === 'helper' ? 'Aide' : 'Aide 2');
+  logChange(`a mis ${pname} en ${slotLabel} sur « ${task.name} »`);
 }
 async function onChecklistToggle(id, personId, checked){
   if(!isDayEditable()) return;
@@ -1079,6 +1083,46 @@ async function exportData(){
     setStatus('Échec de l\u2019export', 'error');
   }
 }
+
+async function exportEverything(){
+  setStatus('Préparation de la sauvegarde complète…', 'saving');
+  try{
+    const allDays = {};
+    await Promise.all(daysIndex.map(async d => { allDays[d] = await loadDayData(d); }));
+    const customTabsBundle = {};
+    if(typeof customTabs !== 'undefined'){
+      for(const t of customTabs){
+        let data;
+        if(typeof activeCustomTabId !== 'undefined' && activeCustomTabId === t.id && activeCustomTabData){
+          data = activeCustomTabData;
+        } else {
+          data = await storageGet(customTabKey(t.id));
+        }
+        customTabsBundle[t.id] = { name: t.name, data };
+      }
+    }
+    const bundle = {
+      exportedAt: new Date().toISOString(),
+      planning: { people, daysIndex, days: allDays },
+      customTabs: customTabsBundle
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sauvegarde-complete-${todayIso()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Sauvegarde complète prête', '');
+    logChange('a fait une sauvegarde complète de tout l\u2019outil (Planning + tous les onglets)');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Sauvegarde complète prête') s.textContent=''; }, 2000);
+  } catch(e){
+    setStatus('Échec de la sauvegarde complète', 'error');
+  }
+}
+document.getElementById('btnExportAll').addEventListener('click', exportEverything);
 
 async function importData(e){
   const file = e.target.files[0];
