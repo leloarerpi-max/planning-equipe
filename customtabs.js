@@ -59,10 +59,13 @@ const SUIVI_COLUMNS = [
   {id:'delai_non_prio',            label:'Délai non prio',        col:21, type:'num'},
   {id:'echange_courtier_vip',      label:'Éch. courtier+VIP',     col:23, type:'num'},
   {id:'nbre_etp',                  label:'ETP',                   col:25, type:'num'},
-  {id:'productivite',              label:'Productivité',          col:26, type:'num'},
+  {id:'productivite',              label:'Productivité',          col:26, type:'formula'},
 ];
 // Champs calculés automatiquement (non saisissables), recalculés dès que leurs sources changent
-const SUIVI_FORMULA_SOURCE_COLS = ['mails_courtier','mail_resil_echanges_resil','mails_avenant','stock_soir'];
+const SUIVI_FORMULA_TRIGGER_COLS = [
+  'mails_courtier','mail_resil_echanges_resil','mails_avenant','stock_soir',
+  'impayes_traites','mise_demeure_traites','echange_client','se_msa','echange_courtier_vip','nbre_etp'
+];
 function suiviToNum(v){
   if(typeof v === 'number') return v;
   if(v === undefined || v === null || v === '') return 0;
@@ -71,19 +74,36 @@ function suiviToNum(v){
 }
 function recomputeSuiviDerivedFields(row){
   row.values = row.values || {};
-  const hasAny = SUIVI_FORMULA_SOURCE_COLS.some(k => row.values[k] !== undefined && row.values[k] !== null && row.values[k] !== '');
-  if(!hasAny){
+  const stockSourceCols = ['mails_courtier','mail_resil_echanges_resil','mails_avenant','stock_soir'];
+  const hasStockSources = stockSourceCols.some(k => row.values[k] !== undefined && row.values[k] !== null && row.values[k] !== '');
+  if(!hasStockSources){
     delete row.values.stock_matin; delete row.values.recu; delete row.values.traite;
-    return;
+  } else {
+    const mc = suiviToNum(row.values.mails_courtier);
+    const mr = suiviToNum(row.values.mail_resil_echanges_resil);
+    const ma = suiviToNum(row.values.mails_avenant);
+    const stockSoir = suiviToNum(row.values.stock_soir);
+    const stockMatin = mc + mr + ma;
+    row.values.stock_matin = stockMatin;
+    row.values.recu = stockMatin;
+    row.values.traite = stockMatin - stockSoir;
   }
-  const mc = suiviToNum(row.values.mails_courtier);
-  const mr = suiviToNum(row.values.mail_resil_echanges_resil);
-  const ma = suiviToNum(row.values.mails_avenant);
-  const stockSoir = suiviToNum(row.values.stock_soir);
-  const stockMatin = mc + mr + ma;
-  row.values.stock_matin = stockMatin;
-  row.values.recu = stockMatin;
-  row.values.traite = stockMatin - stockSoir;
+
+  // Productivité = SIERREUR( (Reçu + Impayés traités + MED traités + Éch. client + SE MSA + Éch. courtier+VIP) / ETP ; "" )
+  const prodSourceCols = ['recu','impayes_traites','mise_demeure_traites','echange_client','se_msa','echange_courtier_vip','nbre_etp'];
+  const hasProdSources = prodSourceCols.some(k => row.values[k] !== undefined && row.values[k] !== null && row.values[k] !== '');
+  if(!hasProdSources){
+    delete row.values.productivite;
+  } else {
+    const etp = suiviToNum(row.values.nbre_etp);
+    if(!etp){
+      row.values.productivite = '';
+    } else {
+      const sum = suiviToNum(row.values.recu) + suiviToNum(row.values.impayes_traites) + suiviToNum(row.values.mise_demeure_traites)
+                + suiviToNum(row.values.echange_client) + suiviToNum(row.values.se_msa) + suiviToNum(row.values.echange_courtier_vip);
+      row.values.productivite = Math.round((sum/etp) * 100) / 100;
+    }
+  }
 }
 // Correspondance entre les badges du Planning (voir TASK_CATEGORIES dans planning.js) et les colonnes Suivi
 const CATEGORY_TO_SUIVI_COL = {
@@ -100,7 +120,7 @@ function defaultSuiviData(){
 function defaultPhonePlanningData(){
   return {
     type: 'phoneplanning',
-    people: ['Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name: n})),
+    people: ['Clara','Charlotte','Ben','Anaïs'].map(n => ({id: cryptoId(), name: n})),
     slots: ['09h-10h','10h-11h','11h-12h','12h-13h','13h-14h','14h-15h','15h-16h','16h-17h'].map(l => ({id: cryptoId(), label: l})),
     days: [],
     shifts: {}
@@ -213,10 +233,12 @@ function updateCustomToolbarForType(){
   document.getElementById('btnAddPhoneMonth').style.display = isPhone ? '' : 'none';
   document.getElementById('btnAddPhoneSlot').style.display = isPhone ? '' : 'none';
   document.getElementById('btnAddPhonePerson').style.display = isPhone ? '' : 'none';
+  document.getElementById('btnRenamePhonePerson').style.display = isPhone ? '' : 'none';
   document.getElementById('btnSavePhoneTemplate').style.display = isPhone ? '' : 'none';
   document.getElementById('btnConvertPhonePlanning').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddSuiviDate').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnImportSuiviExcel').style.display = isSuivi ? '' : 'none';
+  document.getElementById('btnExportSuivi').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnConvertSuivi').style.display = isGeneric ? '' : 'none';
 }
 
@@ -1077,7 +1099,7 @@ function renderSuiviTable(){
         if(!isNaN(n)) val = n;
       }
       if(val === ''){ delete day.values[inp.dataset.col]; } else { day.values[inp.dataset.col] = val; }
-      if(SUIVI_FORMULA_SOURCE_COLS.includes(inp.dataset.col)) recomputeSuiviDerivedFields(day);
+      if(SUIVI_FORMULA_TRIGGER_COLS.includes(inp.dataset.col)) recomputeSuiviDerivedFields(day);
       renderSuiviTable();
       await persistCustomTab();
     });
@@ -1260,5 +1282,60 @@ async function reportCategoryTotalsToSuivi(dateIso, catTotals, extraValues){
   logChange(`a reporté les chiffres du ${dateIso} (${count} indicateur(s)) dans « ${found.name} »`);
   return {ok:true, tabName: found.name, count};
 }
+
+document.getElementById('btnRenamePhonePerson').addEventListener('click', async () => {
+  const d = activeCustomTabData;
+  if(!d.people.length){ alert('Aucune personne enregistrée dans ce planning.'); return; }
+  const names = d.people.map(p => p.name).join(', ');
+  const oldName = prompt(`Renommer qui ? (personnes actuelles : ${names})`);
+  if(!oldName || !oldName.trim()) return;
+  const person = d.people.find(p => p.name.trim().toLowerCase() === oldName.trim().toLowerCase());
+  if(!person){ alert(`Personne "${oldName}" introuvable parmi : ${names}`); return; }
+  const newName = prompt(`Nouveau prénom pour "${person.name}" :`, person.name);
+  if(!newName || !newName.trim()) return;
+  const oldLower = person.name.trim().toLowerCase();
+  const finalName = newName.trim();
+  person.name = finalName;
+  d.shifts = d.shifts || {};
+  let replaced = 0;
+  Object.keys(d.shifts).forEach(key => {
+    if((d.shifts[key] || '').trim().toLowerCase() === oldLower){
+      d.shifts[key] = finalName;
+      replaced++;
+    }
+  });
+  renderPhonePlanningGrid();
+  await persistCustomTab();
+  logChange(`a renommé "${oldName}" en "${finalName}" dans le Planning Tel (${replaced} case(s) mise(s) à jour)`);
+  alert(`"${oldName}" renommé(e) en "${finalName}" (${replaced} case(s) mise(s) à jour).`);
+});
+
+document.getElementById('btnExportSuivi').addEventListener('click', () => {
+  if(typeof XLSX === 'undefined'){
+    alert("La librairie Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
+    return;
+  }
+  const d = activeCustomTabData;
+  const sortedDays = [...(d.days || [])].sort((a,b) => a.date.localeCompare(b.date));
+  if(!sortedDays.length){ alert('Aucune donnée à exporter dans cet onglet.'); return; }
+  const header = ['Date', ...SUIVI_COLUMNS.map(c => c.label)];
+  const aoa = [header];
+  sortedDays.forEach(day => {
+    const [y,m,dd] = day.date.split('-');
+    const row = [dd+'/'+m+'/'+y];
+    SUIVI_COLUMNS.forEach(col => {
+      const v = (day.values && day.values[col.id] != null) ? day.values[col.id] : '';
+      row.push(v);
+    });
+    aoa.push(row);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Suivi');
+  const tabName = (customTabs.find(t=>t.id===activeCustomTabId)||{}).name || 'Suivi Excel';
+  const safeName = tabName.replace(/[^a-z0-9_\-]+/gi, '_');
+  XLSX.writeFile(wb, `${safeName}-${todayIso()}.xlsx`);
+  logChange(`a exporté l'onglet « ${tabName} » en fichier Excel`);
+});
 
 initCustomTabs();
