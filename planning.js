@@ -698,16 +698,45 @@ const TASK_CATEGORIES = [
   {label:'RESIL', tasks:['Échange résiliation','Mail résil']},
 ];
 function normTaskName(s){ return (s||'').trim().toLowerCase(); }
-function computeCategoryTotals(visible){
+function buildTaskObjectifByName(visible){
   const byName = {};
   visible.forEach(t => {
     const key = normTaskName(t.name);
     byName[key] = (byName[key] || 0) + (Number(t.objectif) || 0);
   });
+  return byName;
+}
+function computeCategoryTotals(visible){
+  const byName = buildTaskObjectifByName(visible);
   return TASK_CATEGORIES.map(cat => ({
     label: cat.label,
     sum: cat.tasks.reduce((s, name) => s + (byName[normTaskName(name)] || 0), 0)
   }));
+}
+// Colonnes du Suivi Excel alimentées directement depuis une tâche précise du Planning (pas une catégorie/badge)
+const EXTRA_SUIVI_TASK_MAP = {
+  'impayes_traites': 'IMPAYÉ',
+  'mise_demeure_traites': 'MISE EN DEMEURE',
+};
+function isoToFrFull(iso){
+  const [y,m,d] = iso.split('-');
+  return d+'/'+m+'/'+y;
+}
+// Date de traitement (prio / non prio) = la veille, sauf le lundi où c'est le vendredi précédent
+function prevBusinessDateFr(iso){
+  const dow = new Date(iso+'T00:00:00').getDay(); // 0=dim, 1=lun, ... 6=sam
+  const prevIso = dow === 1 ? addDaysIso(iso, -3) : addDaysIso(iso, -1);
+  return isoToFrFull(prevIso);
+}
+function computeExtraSuiviValues(visible, dateIso){
+  const byName = buildTaskObjectifByName(visible);
+  const values = {};
+  Object.keys(EXTRA_SUIVI_TASK_MAP).forEach(colId => {
+    values[colId] = byName[normTaskName(EXTRA_SUIVI_TASK_MAP[colId])] || 0;
+  });
+  values['date_mail_prio'] = prevBusinessDateFr(dateIso);
+  values['date_non_prio'] = prevBusinessDateFr(dateIso);
+  return values;
 }
 function categoryTotalsBadgesHtml(catTotals){
   let grandTotal = 0;
@@ -757,7 +786,8 @@ function renderSummary(){
     btnReportSuivi.addEventListener('click', async () => {
       if(typeof reportCategoryTotalsToSuivi !== 'function'){ alert('Fonctionnalité indisponible.'); return; }
       btnReportSuivi.disabled = true;
-      const res = await reportCategoryTotalsToSuivi(currentDate, catTotals);
+      const extraValues = computeExtraSuiviValues(visible, currentDate);
+      const res = await reportCategoryTotalsToSuivi(currentDate, catTotals, extraValues);
       btnReportSuivi.disabled = false;
       if(res && res.ok){
         alert(`Chiffres du ${toFr(currentDate)} reportés dans l'onglet « ${res.tabName} ».`);
