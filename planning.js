@@ -667,6 +667,7 @@ async function onChecklistToggle(id, personId, checked){
   } else {
     task.personIds = task.personIds.filter(pid => pid !== personId);
   }
+  task.status = task.personIds.length > 0 ? 'fait' : '';
   renderTable();
   await syncTask(id);
   const pname = people.find(p => p.id === personId)?.name || '?';
