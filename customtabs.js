@@ -38,6 +38,42 @@ function mealPersonColor(data, personId){
 function defaultChecklistData(){
   return { type: 'checklist', rows: [] };
 }
+
+/* ---------- Suivi Excel (import EASY_SUIVI : une ligne par jour) ---------- */
+// col = index de colonne (0-based) dans les feuilles mensuelles du fichier EASY_SUIVI_2026.xlsx
+const SUIVI_COLUMNS = [
+  {id:'mails_courtier',            label:'Mails courtier',        col:1,  type:'num'},
+  {id:'mail_resil_echanges_resil', label:'Mail résil + éch. résil', col:2, type:'num'},
+  {id:'mails_avenant',             label:'Mails avenant',         col:3,  type:'num'},
+  {id:'stock_matin',               label:'Stock matin',           col:4,  type:'num'},
+  {id:'stock_soir',                label:'Stock soir',            col:6,  type:'num'},
+  {id:'recu',                      label:'Reçu',                  col:8,  type:'num'},
+  {id:'traite',                    label:'Traité',                col:9,  type:'num'},
+  {id:'npai_traites',              label:'NPAI traités',          col:11, type:'num'},
+  {id:'impayes_traites',           label:'Impayés traités',       col:12, type:'num'},
+  {id:'mise_demeure_traites',      label:'MED traités',           col:13, type:'num'},
+  {id:'echange_client',            label:'Éch. client',           col:15, type:'num'},
+  {id:'se_msa',                    label:'SE MSA',                col:16, type:'num'},
+  {id:'date_mail_prio',            label:'Date mail prio',        col:18, type:'date'},
+  {id:'delai_prio',                label:'Délai prio',            col:19, type:'num'},
+  {id:'date_non_prio',             label:'Date non prio',         col:20, type:'date'},
+  {id:'delai_non_prio',            label:'Délai non prio',        col:21, type:'num'},
+  {id:'echange_courtier_vip',      label:'Éch. courtier+VIP',     col:23, type:'num'},
+  {id:'nbre_etp',                  label:'ETP',                   col:25, type:'num'},
+  {id:'productivite',              label:'Productivité',          col:26, type:'num'},
+];
+// Correspondance entre les badges du Planning (voir TASK_CATEGORIES dans planning.js) et les colonnes Suivi
+const CATEGORY_TO_SUIVI_COL = {
+  'MAIL': 'mails_courtier',
+  'AVENANTS': 'mails_avenant',
+  'ECHANGES CLTS': 'echange_client',
+  'EDITIONS': 'se_msa',
+  'ECHANGE': 'echange_courtier_vip',
+  'RESIL': 'mail_resil_echanges_resil',
+};
+function defaultSuiviData(){
+  return { type: 'suivi', days: [] }; // days: [{id, date:'YYYY-MM-DD', values:{colId:val}}]
+}
 function defaultPhonePlanningData(){
   return {
     type: 'phoneplanning',
@@ -108,6 +144,7 @@ function renderAppTabs(){
 
 function normalizeMealDataOnLoad(d){
   if(d && d.type === 'mealplanning' && !d.shifts) d.shifts = {};
+  if(d && d.type === 'suivi' && !d.days) d.days = [];
   return d;
 }
 
@@ -123,7 +160,7 @@ async function switchAppTab(tabId){
   document.getElementById('customTabTitle').textContent = tabMeta ? tabMeta.name : 'Onglet';
   document.getElementById('customTableShell').innerHTML = '<div class="empty-note">Chargement…</div>';
   activeCustomTabData = await storageGet(customTabKey(tabId));
-  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows && !activeCustomTabData.slots)){
+  if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows && !activeCustomTabData.slots && !activeCustomTabData.days)){
     activeCustomTabData = defaultCustomTabData();
   }
   normalizeMealDataOnLoad(activeCustomTabData);
@@ -137,7 +174,8 @@ function updateCustomToolbarForType(){
   const isMeal = type === 'mealplanning';
   const isChecklist = type === 'checklist';
   const isPhone = type === 'phoneplanning';
-  const isGeneric = !isMeal && !isChecklist && !isPhone;
+  const isSuivi = type === 'suivi';
+  const isGeneric = !isMeal && !isChecklist && !isPhone && !isSuivi;
   document.getElementById('btnAddColumn').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddRow').style.display = isGeneric ? '' : 'none';
   document.getElementById('btnAddMealDate').style.display = isMeal ? '' : 'none';
@@ -154,6 +192,9 @@ function updateCustomToolbarForType(){
   document.getElementById('btnAddPhonePerson').style.display = isPhone ? '' : 'none';
   document.getElementById('btnSavePhoneTemplate').style.display = isPhone ? '' : 'none';
   document.getElementById('btnConvertPhonePlanning').style.display = isGeneric ? '' : 'none';
+  document.getElementById('btnAddSuiviDate').style.display = isSuivi ? '' : 'none';
+  document.getElementById('btnImportSuiviExcel').style.display = isSuivi ? '' : 'none';
+  document.getElementById('btnConvertSuivi').style.display = isGeneric ? '' : 'none';
 }
 
 function attachCustomTabListener(tabId){
@@ -163,7 +204,7 @@ function attachCustomTabListener(tabId){
     if(!snap.exists()) return;
     let fresh;
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
-    if(!fresh || (!fresh.columns && !fresh.people && !fresh.rows && !fresh.slots)) return;
+    if(!fresh || (!fresh.columns && !fresh.people && !fresh.rows && !fresh.slots && !fresh.days)) return;
     normalizeMealDataOnLoad(fresh);
     const active = document.activeElement;
     if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt typing
@@ -193,6 +234,10 @@ function renderCustomTable(){
   }
   if(activeCustomTabData && activeCustomTabData.type === 'phoneplanning'){
     renderPhonePlanningGrid();
+    return;
+  }
+  if(activeCustomTabData && activeCustomTabData.type === 'suivi'){
+    renderSuiviTable();
     return;
   }
   const shell = document.getElementById('customTableShell');
@@ -937,5 +982,248 @@ document.getElementById('btnConvertPhonePlanning').addEventListener('click', asy
   updateCustomToolbarForType();
   await persistCustomTab();
 });
+
+/* ---------- Suivi Excel (grille jours x indicateurs, importée depuis EASY_SUIVI) ---------- */
+function renderSuiviTable(){
+  const shell = document.getElementById('customTableShell');
+  const d = activeCustomTabData;
+  d.days = d.days || [];
+  const sortedDays = [...d.days].sort((a,b) => a.date.localeCompare(b.date));
+
+  let html = '<table class="suivi-table"><thead><tr><th style="text-align:center;">Date</th>';
+  SUIVI_COLUMNS.forEach(col => { html += `<th title="${escapeHtml(col.label)}">${escapeHtml(col.label)}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  function monthSummaryRow(monthKey, sums){
+    let row = `<tr class="suivi-month-summary" data-monthkey="${monthKey}"><td class="suivi-date-cell">Total — ${mealMonthLabel(monthKey+'-01')}</td>`;
+    SUIVI_COLUMNS.forEach(col => {
+      const v = sums[col.id];
+      row += `<td data-colsum="${col.id}">${(col.type==='num' && v!=null) ? v : ''}</td>`;
+    });
+    row += '</tr>';
+    return row;
+  }
+
+  if(!sortedDays.length){
+    html += `<tr><td colspan="${SUIVI_COLUMNS.length+1}" class="empty-note">Aucune donnée. Importe le fichier Excel ou ajoute une date à la main.</td></tr>`;
+  } else {
+    let lastWeek = null, currentMonth = null, monthSums = {};
+    sortedDays.forEach((day, idx) => {
+      const monthKey = day.date.slice(0,7);
+      if(currentMonth !== null && monthKey !== currentMonth){
+        html += monthSummaryRow(currentMonth, monthSums);
+        monthSums = {};
+      }
+      currentMonth = monthKey;
+
+      const wk = mealWeekLabel(day.date);
+      if(wk !== lastWeek){
+        html += `<tr class="suivi-week-sep"><td colspan="${SUIVI_COLUMNS.length+1}">Semaine du ${fmtMealDate(wk).ddmm}</td></tr>`;
+        lastWeek = wk;
+      }
+      const {wd, ddmm} = fmtMealDate(day.date);
+      const isToday = day.date === todayIso();
+      html += `<tr class="${isToday ? 'suivi-today-row' : ''}"><td class="suivi-date-cell"><div class="row-inner"><span>${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span>${isToday ? '<span class="meal-today-badge">AUJOURD\u2019HUI</span>' : ''}</span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette ligne">✕</button></div></td>`;
+      SUIVI_COLUMNS.forEach(col => {
+        const raw = (day.values && day.values[col.id] != null) ? day.values[col.id] : '';
+        if(col.type === 'num' && typeof raw === 'number') monthSums[col.id] = (monthSums[col.id]||0) + raw;
+        html += `<td class="suivi-cell"><input type="text" value="${escapeHtml(String(raw))}" data-day="${day.id}" data-col="${col.id}" data-type="${col.type}" /></td>`;
+      });
+      html += '</tr>';
+
+      if(idx === sortedDays.length-1){
+        html += monthSummaryRow(currentMonth, monthSums);
+      }
+    });
+  }
+  html += '</tbody></table>';
+  shell.innerHTML = html;
+
+  shell.querySelectorAll('td.suivi-cell input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const day = d.days.find(x => x.id === inp.dataset.day);
+      if(!day) return;
+      day.values = day.values || {};
+      let val = inp.value.trim();
+      if(inp.dataset.type === 'num' && val !== ''){
+        const n = Number(val.replace(',', '.'));
+        if(!isNaN(n)) val = n;
+      }
+      if(val === ''){ delete day.values[inp.dataset.col]; } else { day.values[inp.dataset.col] = val; }
+      renderSuiviTable();
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-daydel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dayId = btn.dataset.daydel;
+      const removedDay = d.days.find(x => x.id === dayId);
+      if(!removedDay) return;
+      d.days = d.days.filter(x => x.id !== dayId);
+      renderSuiviTable();
+      await persistCustomTab();
+      showUndoToast(`Ligne du ${fmtMealDate(removedDay.date).ddmm} supprimée`, async () => {
+        if(!d.days.some(x => x.id === dayId)) d.days.push(removedDay);
+        renderSuiviTable();
+        await persistCustomTab();
+      });
+    });
+  });
+  wireSuiviNav(shell);
+}
+function wireSuiviNav(shell){
+  const inputs = Array.from(shell.querySelectorAll('td.suivi-cell input'));
+  inputs.forEach((inp, idx) => {
+    inp.addEventListener('keydown', (e) => {
+      if(e.key === 'ArrowDown' || e.key === 'Enter'){
+        e.preventDefault();
+        const next = inputs[idx+1];
+        if(next){ next.focus(); next.select(); }
+      } else if(e.key === 'ArrowUp'){
+        e.preventDefault();
+        const prev = inputs[idx-1];
+        if(prev){ prev.focus(); prev.select(); }
+      }
+    });
+    inp.addEventListener('focus', () => inp.select());
+  });
+}
+
+document.getElementById('btnAddSuiviDate').addEventListener('click', async () => {
+  const input = prompt('Date à ajouter (JJ/MM/AAAA) :');
+  if(!input) return;
+  const m = input.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(!m){ alert('Format invalide. Utilise JJ/MM/AAAA.'); return; }
+  const iso = m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  const d = activeCustomTabData;
+  d.days = d.days || [];
+  if(d.days.some(x => x.date === iso)){ alert('Cette date existe déjà.'); return; }
+  d.days.push({id: cryptoId(), date: iso, values: {}});
+  renderSuiviTable();
+  await persistCustomTab();
+});
+
+document.getElementById('btnConvertSuivi').addEventListener('click', async () => {
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
+  if(!confirm('Transformer cet onglet en "Suivi Excel" (une ligne par jour, colonnes du fichier EASY_SUIVI) ? Le contenu actuel de ce tableau sera remplacé.')) return;
+  activeCustomTabData = defaultSuiviData();
+  renderCustomTable();
+  updateCustomToolbarForType();
+  await persistCustomTab();
+});
+
+/* --- Import du fichier EASY_SUIVI_2026.xlsx (une feuille par mois) --- */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function isoFromXlsxDate(v){
+  if(v instanceof Date && !isNaN(v)) return v.getUTCFullYear()+'-'+pad2(v.getUTCMonth()+1)+'-'+pad2(v.getUTCDate());
+  if(typeof v === 'number' && typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code){
+    const dc = XLSX.SSF.parse_date_code(v);
+    if(dc) return dc.y+'-'+pad2(dc.m)+'-'+pad2(dc.d);
+  }
+  return null;
+}
+function frFromXlsxDate(v){
+  const iso = isoFromXlsxDate(v);
+  if(!iso) return (v==null ? '' : String(v));
+  const [y,m,day] = iso.split('-');
+  return day+'/'+m+'/'+y;
+}
+function parseSuiviWorkbookToDays(wb){
+  const result = {}; // iso -> {colId: value}
+  wb.SheetNames.forEach(sheetName => {
+    if(/total/i.test(sheetName)) return; // on ignore la feuille récap "TOTAL"
+    const ws = wb.Sheets[sheetName];
+    if(!ws) return;
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+    for(let r=1; r<rows.length; r++){ // r=0 est la ligne d'en-têtes
+      const row = rows[r];
+      if(!row || row[0] === null || row[0] === undefined || row[0] === '') continue;
+      if(typeof row[0] === 'string' && /total/i.test(row[0])) continue;
+      const iso = isoFromXlsxDate(row[0]);
+      if(!iso) continue;
+      const values = {};
+      SUIVI_COLUMNS.forEach(def => {
+        const raw = row[def.col];
+        if(raw === undefined || raw === null || raw === '') return;
+        values[def.id] = def.type === 'date' ? frFromXlsxDate(raw) : raw;
+      });
+      if(Object.keys(values).length) result[iso] = Object.assign({}, values, result[iso] || {});
+    }
+  });
+  return result;
+}
+document.getElementById('btnImportSuiviExcel').addEventListener('click', () => document.getElementById('suiviExcelFileInput').click());
+document.getElementById('suiviExcelFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    alert("La librairie de lecture Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
+    return;
+  }
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const dayMap = parseSuiviWorkbookToDays(wb);
+    const isoList = Object.keys(dayMap);
+    if(!isoList.length){ alert("Aucune ligne journalière reconnue dans ce fichier (vérifie qu'il s'agit bien du format EASY_SUIVI)."); return; }
+    const d = activeCustomTabData;
+    d.days = d.days || [];
+    let created = 0, updated = 0;
+    isoList.forEach(iso => {
+      let row = d.days.find(x => x.date === iso);
+      if(!row){ row = {id: cryptoId(), date: iso, values: {}}; d.days.push(row); created++; }
+      else { updated++; }
+      row.values = Object.assign({}, row.values, dayMap[iso]);
+    });
+    renderSuiviTable();
+    await persistCustomTab();
+    const tabName = (customTabs.find(t=>t.id===activeCustomTabId)||{}).name || 'Suivi Excel';
+    logChange(`a importé un fichier Excel dans « ${tabName} » (${created} jour(s) créé(s), ${updated} mis à jour)`);
+    alert(`Import terminé : ${created} nouveau(x) jour(s), ${updated} jour(s) mis à jour.`);
+  } catch(err){
+    alert("Impossible de lire ce fichier. Vérifie qu'il s'agit bien d'un fichier Excel (.xlsx) valide.\n\n" + (err && err.message ? err.message : ''));
+  }
+});
+
+/* --- Pont avec le Planning : reporter les badges (MAIL, AVENANTS, ...) dans la bonne ligne/colonne --- */
+async function findSuiviTab(){
+  for(const t of customTabs){
+    let data;
+    if(activeCustomTabId === t.id && activeCustomTabData){
+      data = activeCustomTabData;
+    } else {
+      data = await storageGet(customTabKey(t.id));
+    }
+    if(data && data.type === 'suivi') return {id: t.id, name: t.name, data};
+  }
+  return null;
+}
+async function reportCategoryTotalsToSuivi(dateIso, catTotals){
+  const found = await findSuiviTab();
+  if(!found) return {ok:false, reason:'not-found'};
+  const data = found.data;
+  data.days = data.days || [];
+  let row = data.days.find(x => x.date === dateIso);
+  if(!row){ row = {id: cryptoId(), date: dateIso, values: {}}; data.days.push(row); }
+  row.values = row.values || {};
+  let count = 0;
+  catTotals.forEach(c => {
+    const colId = CATEGORY_TO_SUIVI_COL[c.label];
+    if(!colId) return;
+    row.values[colId] = c.sum;
+    count++;
+  });
+  await storageSet(customTabKey(found.id), data);
+  if(activeCustomTabId === found.id){
+    activeCustomTabData = data;
+    renderCustomTable();
+  }
+  logChange(`a reporté les chiffres du ${dateIso} (${count} indicateur(s)) dans « ${found.name} »`);
+  return {ok:true, tabName: found.name, count};
+}
 
 initCustomTabs();
