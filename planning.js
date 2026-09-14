@@ -698,18 +698,23 @@ const TASK_CATEGORIES = [
   {label:'RESIL', tasks:['Échange résiliation','Mail résil']},
 ];
 function normTaskName(s){ return (s||'').trim().toLowerCase(); }
-function categoryTotalsBadgesHtml(visible){
+function computeCategoryTotals(visible){
   const byName = {};
   visible.forEach(t => {
     const key = normTaskName(t.name);
     byName[key] = (byName[key] || 0) + (Number(t.objectif) || 0);
   });
+  return TASK_CATEGORIES.map(cat => ({
+    label: cat.label,
+    sum: cat.tasks.reduce((s, name) => s + (byName[normTaskName(name)] || 0), 0)
+  }));
+}
+function categoryTotalsBadgesHtml(catTotals){
   let grandTotal = 0;
   let badges = '';
-  TASK_CATEGORIES.forEach(cat => {
-    const sum = cat.tasks.reduce((s, name) => s + (byName[normTaskName(name)] || 0), 0);
-    grandTotal += sum;
-    badges += `<span class="cat-badge">${escapeHtml(cat.label)} <b>${sum}</b></span>`;
+  catTotals.forEach(c => {
+    grandTotal += c.sum;
+    badges += `<span class="cat-badge">${escapeHtml(c.label)} <b>${c.sum}</b></span>`;
   });
   badges += `<span class="cat-badge cat-badge-total">TOTAL <b>${grandTotal}</b></span>`;
   return badges;
@@ -729,6 +734,7 @@ function renderSummary(){
   const r = 34, circ = 2*Math.PI*r;
   const dash = circ * pct/100;
   const ringColor = reached ? 'var(--teal)' : 'var(--ochre)';
+  const catTotals = computeCategoryTotals(visible);
   box.innerHTML = `
     <div class="today-ring">
       <svg width="88" height="88" viewBox="0 0 88 88">
@@ -744,8 +750,22 @@ function renderSummary(){
       <div class="today-nums"><b>${doneObjectif}</b> / ${totalObjectif} réalisé · <b>${visible.filter(t=>t.status==='fait').length}</b> / ${visible.length} tâches faites</div>
       <div class="bar-track" style="width:220px;"><div class="bar-fill ${reached?'reached':''}" style="width:${pct}%"></div></div>
     </div>
-    <div class="cat-badges-row">${categoryTotalsBadgesHtml(visible)}</div>
+    <div class="cat-badges-row">${categoryTotalsBadgesHtml(catTotals)}<button class="btn-ghost" id="btnReportSuivi" style="margin-left:6px;">📌 Reporter dans Suivi Excel</button></div>
   `;
+  const btnReportSuivi = document.getElementById('btnReportSuivi');
+  if(btnReportSuivi){
+    btnReportSuivi.addEventListener('click', async () => {
+      if(typeof reportCategoryTotalsToSuivi !== 'function'){ alert('Fonctionnalité indisponible.'); return; }
+      btnReportSuivi.disabled = true;
+      const res = await reportCategoryTotalsToSuivi(currentDate, catTotals);
+      btnReportSuivi.disabled = false;
+      if(res && res.ok){
+        alert(`Chiffres du ${toFr(currentDate)} reportés dans l'onglet « ${res.tabName} ».`);
+      } else {
+        alert('Aucun onglet "Suivi Excel" trouvé.\n\nCrée-le d\u2019abord : "+ Nouvel onglet", puis dans cet onglet clique sur "🧮 Transformer en Suivi Excel" (mode superviseur).');
+      }
+    });
+  }
 
   const byPerson = {};
   people.forEach(p => byPerson[p.id] = {id:p.id, name:p.name, assigned:0, done:0, target: (p.objectif===''||p.objectif==null)?'':Number(p.objectif), color:personColor(p.id)});
