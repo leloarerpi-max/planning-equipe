@@ -680,6 +680,7 @@ async function deleteAppTab(tabId){
   if(!confirm(`Supprimer définitivement l'onglet "${tabMeta.name}" et tout son contenu ?`)) return;
   customTabs = customTabs.filter(t => t.id !== tabId);
   await storageSet(CUSTOMTABS_INDEX_KEY, customTabs);
+  await storageDelete(customTabKey(tabId));
   if(activeAppTab === tabId){
     if(customTabListenerRef){ customTabListenerRef.off(); customTabListenerRef = null; }
     switchAppTab('planning');
