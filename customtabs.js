@@ -1039,11 +1039,22 @@ function renderSuiviTable(){
   SUIVI_COLUMNS.forEach(col => { html += `<th title="${escapeHtml(col.label)}">${escapeHtml(col.label)}</th>`; });
   html += '</tr></thead><tbody>';
 
-  function monthSummaryRow(monthKey, sums){
+  // Ces colonnes doivent afficher une MOYENNE dans la ligne "Total" du mois, pas une somme
+  const SUIVI_AVERAGE_COLS = ['delai_prio','delai_non_prio','nbre_etp','productivite'];
+
+  function monthSummaryRow(monthKey, sums, counts){
     let row = `<tr class="suivi-month-summary" data-monthkey="${monthKey}"><td class="suivi-date-cell">Total — ${mealMonthLabel(monthKey+'-01')}</td>`;
     SUIVI_COLUMNS.forEach(col => {
-      const v = sums[col.id];
-      row += `<td data-colsum="${col.id}">${((col.type==='num'||col.type==='formula') && v!=null) ? v : ''}</td>`;
+      let display = '';
+      if(col.type === 'num' || col.type === 'formula'){
+        if(SUIVI_AVERAGE_COLS.includes(col.id)){
+          const c = counts[col.id] || 0;
+          if(c > 0) display = Math.round((sums[col.id]/c) * 100) / 100;
+        } else if(sums[col.id] != null){
+          display = sums[col.id];
+        }
+      }
+      row += `<td data-colsum="${col.id}">${display}</td>`;
     });
     row += '</tr>';
     return row;
@@ -1052,12 +1063,12 @@ function renderSuiviTable(){
   if(!sortedDays.length){
     html += `<tr><td colspan="${SUIVI_COLUMNS.length+1}" class="empty-note">Aucune donnée. Importe le fichier Excel ou ajoute une date à la main.</td></tr>`;
   } else {
-    let lastWeek = null, currentMonth = null, monthSums = {};
+    let lastWeek = null, currentMonth = null, monthSums = {}, monthCounts = {};
     sortedDays.forEach((day, idx) => {
       const monthKey = day.date.slice(0,7);
       if(currentMonth !== null && monthKey !== currentMonth){
-        html += monthSummaryRow(currentMonth, monthSums);
-        monthSums = {};
+        html += monthSummaryRow(currentMonth, monthSums, monthCounts);
+        monthSums = {}; monthCounts = {};
       }
       currentMonth = monthKey;
 
@@ -1071,7 +1082,10 @@ function renderSuiviTable(){
       html += `<tr class="${isToday ? 'suivi-today-row' : ''}"><td class="suivi-date-cell"><div class="row-inner"><span>${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span>${isToday ? '<span class="meal-today-badge">AUJOURD\u2019HUI</span>' : ''}</span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette ligne">✕</button></div></td>`;
       SUIVI_COLUMNS.forEach(col => {
         const raw = (day.values && day.values[col.id] != null) ? day.values[col.id] : '';
-        if((col.type === 'num' || col.type === 'formula') && typeof raw === 'number') monthSums[col.id] = (monthSums[col.id]||0) + raw;
+        if((col.type === 'num' || col.type === 'formula') && typeof raw === 'number'){
+          monthSums[col.id] = (monthSums[col.id]||0) + raw;
+          monthCounts[col.id] = (monthCounts[col.id]||0) + 1;
+        }
         if(col.type === 'formula'){
           html += `<td class="suivi-cell suivi-formula" title="Calculé automatiquement">${raw === '' ? '—' : escapeHtml(String(raw))}</td>`;
         } else {
@@ -1081,7 +1095,7 @@ function renderSuiviTable(){
       html += '</tr>';
 
       if(idx === sortedDays.length-1){
-        html += monthSummaryRow(currentMonth, monthSums);
+        html += monthSummaryRow(currentMonth, monthSums, monthCounts);
       }
     });
   }
