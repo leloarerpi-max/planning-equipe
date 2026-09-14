@@ -45,11 +45,10 @@ const SUIVI_COLUMNS = [
   {id:'mails_courtier',            label:'Mails courtier',        col:1,  type:'num'},
   {id:'mail_resil_echanges_resil', label:'Mail résil + éch. résil', col:2, type:'num'},
   {id:'mails_avenant',             label:'Mails avenant',         col:3,  type:'num'},
-  {id:'stock_matin',               label:'Stock matin',           col:4,  type:'num'},
+  {id:'stock_matin',               label:'Stock matin',           col:4,  type:'formula'},
   {id:'stock_soir',                label:'Stock soir',            col:6,  type:'num'},
-  {id:'recu',                      label:'Reçu',                  col:8,  type:'num'},
-  {id:'traite',                    label:'Traité',                col:9,  type:'num'},
-  {id:'npai_traites',              label:'NPAI traités',          col:11, type:'num'},
+  {id:'recu',                      label:'Reçu',                  col:8,  type:'formula'},
+  {id:'traite',                    label:'Traité',                col:9,  type:'formula'},
   {id:'impayes_traites',           label:'Impayés traités',       col:12, type:'num'},
   {id:'mise_demeure_traites',      label:'MED traités',           col:13, type:'num'},
   {id:'echange_client',            label:'Éch. client',           col:15, type:'num'},
@@ -62,6 +61,30 @@ const SUIVI_COLUMNS = [
   {id:'nbre_etp',                  label:'ETP',                   col:25, type:'num'},
   {id:'productivite',              label:'Productivité',          col:26, type:'num'},
 ];
+// Champs calculés automatiquement (non saisissables), recalculés dès que leurs sources changent
+const SUIVI_FORMULA_SOURCE_COLS = ['mails_courtier','mail_resil_echanges_resil','mails_avenant','stock_soir'];
+function suiviToNum(v){
+  if(typeof v === 'number') return v;
+  if(v === undefined || v === null || v === '') return 0;
+  const n = Number(String(v).replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function recomputeSuiviDerivedFields(row){
+  row.values = row.values || {};
+  const hasAny = SUIVI_FORMULA_SOURCE_COLS.some(k => row.values[k] !== undefined && row.values[k] !== null && row.values[k] !== '');
+  if(!hasAny){
+    delete row.values.stock_matin; delete row.values.recu; delete row.values.traite;
+    return;
+  }
+  const mc = suiviToNum(row.values.mails_courtier);
+  const mr = suiviToNum(row.values.mail_resil_echanges_resil);
+  const ma = suiviToNum(row.values.mails_avenant);
+  const stockSoir = suiviToNum(row.values.stock_soir);
+  const stockMatin = mc + mr + ma;
+  row.values.stock_matin = stockMatin;
+  row.values.recu = stockMatin;
+  row.values.traite = stockMatin - stockSoir;
+}
 // Correspondance entre les badges du Planning (voir TASK_CATEGORIES dans planning.js) et les colonnes Suivi
 const CATEGORY_TO_SUIVI_COL = {
   'MAIL': 'mails_courtier',
@@ -998,7 +1021,7 @@ function renderSuiviTable(){
     let row = `<tr class="suivi-month-summary" data-monthkey="${monthKey}"><td class="suivi-date-cell">Total — ${mealMonthLabel(monthKey+'-01')}</td>`;
     SUIVI_COLUMNS.forEach(col => {
       const v = sums[col.id];
-      row += `<td data-colsum="${col.id}">${(col.type==='num' && v!=null) ? v : ''}</td>`;
+      row += `<td data-colsum="${col.id}">${((col.type==='num'||col.type==='formula') && v!=null) ? v : ''}</td>`;
     });
     row += '</tr>';
     return row;
@@ -1026,8 +1049,12 @@ function renderSuiviTable(){
       html += `<tr class="${isToday ? 'suivi-today-row' : ''}"><td class="suivi-date-cell"><div class="row-inner"><span>${ddmm} <span style="color:var(--ink-soft);font-weight:400;">${wd}</span>${isToday ? '<span class="meal-today-badge">AUJOURD\u2019HUI</span>' : ''}</span><button class="remove-x" data-daydel="${day.id}" title="Supprimer cette ligne">✕</button></div></td>`;
       SUIVI_COLUMNS.forEach(col => {
         const raw = (day.values && day.values[col.id] != null) ? day.values[col.id] : '';
-        if(col.type === 'num' && typeof raw === 'number') monthSums[col.id] = (monthSums[col.id]||0) + raw;
-        html += `<td class="suivi-cell"><input type="text" value="${escapeHtml(String(raw))}" data-day="${day.id}" data-col="${col.id}" data-type="${col.type}" /></td>`;
+        if((col.type === 'num' || col.type === 'formula') && typeof raw === 'number') monthSums[col.id] = (monthSums[col.id]||0) + raw;
+        if(col.type === 'formula'){
+          html += `<td class="suivi-cell suivi-formula" title="Calculé automatiquement">${raw === '' ? '—' : escapeHtml(String(raw))}</td>`;
+        } else {
+          html += `<td class="suivi-cell"><input type="text" value="${escapeHtml(String(raw))}" data-day="${day.id}" data-col="${col.id}" data-type="${col.type}" /></td>`;
+        }
       });
       html += '</tr>';
 
@@ -1050,6 +1077,7 @@ function renderSuiviTable(){
         if(!isNaN(n)) val = n;
       }
       if(val === ''){ delete day.values[inp.dataset.col]; } else { day.values[inp.dataset.col] = val; }
+      if(SUIVI_FORMULA_SOURCE_COLS.includes(inp.dataset.col)) recomputeSuiviDerivedFields(day);
       renderSuiviTable();
       await persistCustomTab();
     });
@@ -1223,6 +1251,7 @@ async function reportCategoryTotalsToSuivi(dateIso, catTotals, extraValues){
       count++;
     });
   }
+  recomputeSuiviDerivedFields(row);
   await storageSet(customTabKey(found.id), data);
   if(activeCustomTabId === found.id){
     activeCustomTabData = data;
