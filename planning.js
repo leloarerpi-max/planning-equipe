@@ -488,7 +488,6 @@ function taskRowHtml(t, isGroupStart){
   const editable = isDayEditable();
   const dis = editable ? '' : 'disabled';
   const stCls = t.status === 'fait' ? 'st-fait' : (t.status === 'afaire' ? 'st-afaire' : 'st-empty');
-  const prCls = t.priority ? 'pr-'+t.priority : 'pr-empty';
   const rowCls = t.priority ? 'row-'+t.priority : 'row-empty';
   const primaryId = t.personIds[0] || '';
   const helperId = t.personIds[1] || '';
@@ -531,14 +530,16 @@ function taskRowHtml(t, isGroupStart){
     </select></td>
     <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${dis} /></td>`;
 
+  const priorityDot = {
+    rose:'#C9605A', peche:'#C9903E', bleu:'#4A7FC1', '':'transparent'
+  }[t.priority || ''];
+  const priorityTitle = 'Couleur : ' + PRIORITY_LABELS[t.priority || ''] + ' (cliquer pour changer)';
+
   return `<tr class="task-row ${rowCls}${isGroupStart ? ' group-start' : ''}" data-task="${t.id}">
-    <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} /></td>
-    <td class="obj-cell" style="width:64px;"><select class="priority-select ${prCls}" data-field="priority" ${dis}>
-      <option value="" ${t.priority===''?'selected':''}>—</option>
-      <option value="rose" ${t.priority==='rose'?'selected':''}>Rose</option>
-      <option value="peche" ${t.priority==='peche'?'selected':''}>Pêche</option>
-      <option value="bleu" ${t.priority==='bleu'?'selected':''}>Bleu</option>
-    </select></td>
+    <td class="task-name">
+      <button type="button" class="priority-dot" data-action="cycle-priority" title="${priorityTitle}" style="background:${priorityDot};" ${dis}></button>
+      <input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} />
+    </td>
     ${peopleCells}
     ${statusNombreCells}
     <td>${(editable && isAdmin) ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
@@ -571,7 +572,7 @@ function renderTable(){
   if(!visible.length){
     shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
   } else {
-    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Couleur</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
     let prevPriority = null;
     visible.forEach((t, i) => {
       const isGroupStart = i > 0 && (t.priority || '') !== prevPriority;
@@ -586,6 +587,8 @@ function renderTable(){
       row.querySelectorAll('[data-field]').forEach(el => el.addEventListener('change', () => onFieldChange(id, el)));
       const rmBtn = row.querySelector('[data-action="remove-task"]');
       if(rmBtn) rmBtn.addEventListener('click', () => removeTask(id));
+      const dotBtn = row.querySelector('[data-action="cycle-priority"]');
+      if(dotBtn) dotBtn.addEventListener('click', () => cycleTaskPriority(id));
       row.querySelectorAll('.person-slot-select').forEach(sel => sel.addEventListener('change', () => onPersonSlotChange(id, sel.dataset.slot, sel.value)));
       row.querySelectorAll('.checklist-item input').forEach(cb => cb.addEventListener('change', () => onChecklistToggle(id, cb.dataset.person, cb.checked)));
     });
@@ -654,15 +657,24 @@ async function onFieldChange(id, el){
       }
     }
   }
-  if(field === 'priority'){
-    renderTable();
-  }
   await syncTask(id);
   if(statusChanged) updateStatusSelectInPlace(id, task.status);
   renderSummary();
   const label = fieldLabels[field] || field;
   logChange(`a modifié ${label} de « ${task.name} » → ${val === '' ? '(vide)' : val}`);
   if(statusChanged) logChange(`« ${task.name} » statut ajusté automatiquement → ${task.status === '' ? '(vide)' : (task.status === 'fait' ? 'Fait' : 'À faire')} (Nombre = ${val === '' ? 'vide' : val})`);
+}
+
+async function cycleTaskPriority(id){
+  if(!isDayEditable()) return;
+  const task = dayData.tasks.find(t => t.id === id);
+  if(!task) return;
+  const order = ['', 'rose', 'peche', 'bleu'];
+  const next = order[(order.indexOf(task.priority || '') + 1) % order.length];
+  task.priority = next;
+  renderTable();
+  await syncTask(id);
+  logChange(`a changé la couleur de « ${task.name} » → ${PRIORITY_LABELS[next]}`);
 }
 
 async function onPersonSlotChange(id, slot, value){
