@@ -13,16 +13,22 @@ let activeAppTab = 'planning'; // 'planning' or a custom tab id
 let activeCustomTabId = null;
 let activeCustomTabData = null; // {columns:[{id,label}], rows:[{id, cells:{colId:val}}]}
 let customTabListenerRef = null;
+let customSortState = { colId: null, dir: null };  // tri d'affichage uniquement, non enregistré
+let customSearchTerm = '';                          // recherche d'affichage uniquement, non enregistrée
 
 function defaultCustomTabData(){
   return {
     type: 'generic',
-    columns: [ {id:'c1', label:'Colonne 1', align:'left', color:null, width:160}, {id:'c2', label:'Colonne 2', align:'left', color:null, width:160} ],
+    columns: [
+      {id:'c1', label:'Colonne 1', align:'left', color:null, width:160, fontSize:null, cellType:'text'},
+      {id:'c2', label:'Colonne 2', align:'left', color:null, width:160, fontSize:null, cellType:'text'}
+    ],
     rows: [ {id: cryptoId(), cells: {}} ]
   };
 }
-/* --- Personnalisation des colonnes (tableau libre) : couleur, alignement, largeur --- */
+/* --- Personnalisation des colonnes (tableau libre) : couleur, alignement, largeur, taille de texte, type --- */
 const CUSTOM_COL_DEFAULT_WIDTH = 160;
+const CUSTOM_COL_DEFAULT_FONTSIZE = 13;
 function colContrastColor(hex){
   if(!hex || hex.length !== 7) return null;
   const r = parseInt(hex.substr(1,2),16), g = parseInt(hex.substr(3,2),16), b = parseInt(hex.substr(5,2),16);
@@ -64,9 +70,45 @@ function injectCustomTabExtraStyles(){
       cursor:pointer; font-size:13px; color:var(--ink-soft);
     }
     .col-align-btn.active{ background:var(--violet); border-color:var(--violet); color:#fff; }
+    .col-settings-popover input[type=range]{ flex:1; accent-color:var(--violet); }
+    .col-type-btn{
+      flex:1; background:var(--paper); border:1px solid var(--line-strong); border-radius:4px; padding:6px 4px;
+      cursor:pointer; font-size:12px; color:var(--ink-soft);
+    }
+    .col-type-btn.active{ background:var(--violet); border-color:var(--violet); color:#fff; }
+    .col-settings-reset{ background:none; border:none; color:var(--ink-soft); text-decoration:underline; cursor:pointer; font-size:11px; padding:0; flex-shrink:0; }
     .col-settings-clear{ background:none; border:none; color:var(--ink-soft); text-decoration:underline; cursor:pointer; font-size:11.5px; padding:0; }
     .col-settings-delete{ width:100%; background:none; border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:7px 0; cursor:pointer; font-size:12px; margin-top:12px; }
     .col-settings-delete:hover{ background:var(--danger); color:#fff; }
+    .col-status-option-row{ display:flex; align-items:center; gap:6px; }
+    .col-status-option-row input[type=color]{ width:24px; height:24px; }
+    .col-status-option-row input[type=text]{
+      flex:1; min-width:0; border:1px solid var(--line-strong); border-radius:4px; padding:5px 6px;
+      font-family:inherit; font-size:12px; color:var(--ink);
+    }
+    .col-status-opt-del{ background:none; border:none; color:var(--ink-soft); opacity:.5; cursor:pointer; font-size:12px; flex-shrink:0; }
+    .col-status-opt-del:hover{ opacity:1; color:var(--danger); }
+    .custom-col-sort{
+      flex-shrink:0; background:none; border:none; color:var(--ink-soft); opacity:.35;
+      cursor:pointer; font-size:11px; padding:2px 3px; border-radius:3px; line-height:1;
+    }
+    .custom-col-sort:hover{ opacity:1; }
+    .custom-col-sort.active{ opacity:1; color:var(--violet); }
+    .custom-search-bar{ display:flex; align-items:center; gap:10px; padding:10px 10px 12px; }
+    .custom-search-bar input{
+      flex:1; max-width:320px; border:1px solid var(--line-strong); border-radius:20px; padding:7px 14px;
+      font-family:inherit; font-size:13px; background:#fff; color:var(--ink);
+    }
+    .custom-search-bar input:focus{ outline:1px solid var(--violet); }
+    .custom-search-count{ font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+    .custom-status-select{
+      width:auto; min-width:70px; max-width:96%; border:none; font-family:inherit; font-weight:700;
+      padding:7px 12px; cursor:pointer; text-align:center; text-align-last:center; border-radius:12px;
+      appearance:none; -webkit-appearance:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);
+    }
+    table.custom-table tfoot td{ border-top:2px solid var(--ink); background:var(--panel); font-size:12.5px; }
+    table.custom-table th[draggable="true"]{ cursor:grab; }
+    table.custom-table th.custom-col-dragover{ outline:2px dashed var(--violet); outline-offset:-2px; }
   `;
   document.head.appendChild(style);
 }
@@ -79,6 +121,17 @@ function livePreviewColumnColor(colId, color){
   });
   shell.querySelectorAll(`input[data-colid="${colId}"]`).forEach(inp => {
     inp.style.color = txtColor || '';
+  });
+}
+function livePreviewColumnFontSize(colId, size){
+  const shell = document.getElementById('customTableShell');
+  if(!shell) return;
+  const scale = Math.max(.75, Math.min(1.8, size / CUSTOM_COL_DEFAULT_FONTSIZE));
+  shell.querySelectorAll(`input[type="text"][data-colid="${colId}"]`).forEach(inp => {
+    inp.style.fontSize = size + 'px';
+  });
+  shell.querySelectorAll(`input[type="checkbox"][data-colid="${colId}"]`).forEach(cb => {
+    cb.style.transform = `scale(${scale})`;
   });
 }
 function closeColSettingsPopover(){
@@ -104,6 +157,15 @@ function openColSettingsPopover(colId, anchorBtn){
     document.body.appendChild(p);
   }
   const align = col.align || 'left';
+  const fontSize = col.fontSize || CUSTOM_COL_DEFAULT_FONTSIZE;
+  const cellType = col.cellType || 'text';
+  if(cellType === 'status' && !Array.isArray(col.options)) col.options = [];
+  const statusOptionsHtml = (col.options||[]).map(o => `
+    <div class="col-status-option-row" data-optid="${o.id}">
+      <input type="color" class="col-status-opt-color" value="${o.color || '#8E7CC3'}" />
+      <input type="text" class="col-status-opt-label" value="${escapeHtml(o.label)}" />
+      <button class="col-status-opt-del" data-optdel="${o.id}" title="Supprimer cette option">✕</button>
+    </div>`).join('');
   p.innerHTML = `
     <div class="col-settings-title">Réglages de la colonne</div>
     <div class="col-settings-row">
@@ -119,10 +181,34 @@ function openColSettingsPopover(colId, anchorBtn){
         <button class="col-align-btn ${align==='right'?'active':''}" data-align="right" title="Aligner à droite">⟶</button>
       </div>
     </div>
+    <div class="col-settings-row">
+      <span class="col-settings-label">Taille</span>
+      <input type="range" id="colSettingsFontSize" min="11" max="22" step="1" value="${fontSize}" />
+      <span id="colSettingsFontSizeVal" style="width:32px;text-align:right;color:var(--ink-soft);">${fontSize}px</span>
+      <button class="col-settings-reset" id="colSettingsFontReset" title="Revenir à la taille par défaut">↺</button>
+    </div>
+    <div class="col-settings-row">
+      <span class="col-settings-label">Contenu</span>
+      <select id="colSettingsType" style="flex:1;padding:6px;border:1px solid var(--line-strong);border-radius:4px;font-family:inherit;font-size:12.5px;background:#fff;">
+        <option value="text" ${cellType==='text'?'selected':''}>Texte libre</option>
+        <option value="number" ${cellType==='number'?'selected':''}>Nombre</option>
+        <option value="date" ${cellType==='date'?'selected':''}>Date</option>
+        <option value="checkbox" ${cellType==='checkbox'?'selected':''}>Case à cocher</option>
+        <option value="status" ${cellType==='status'?'selected':''}>Liste déroulante (statuts)</option>
+      </select>
+    </div>
+    ${cellType === 'status' ? `
+    <div class="col-settings-row" style="align-items:flex-start;">
+      <span class="col-settings-label">Options</span>
+      <div id="colStatusOptions" style="flex:1;display:flex;flex-direction:column;gap:6px;">
+        ${statusOptionsHtml}
+        <button class="col-settings-reset" id="colStatusOptAdd" style="text-decoration:none;">+ Ajouter une option</button>
+      </div>
+    </div>` : ''}
     ${d.columns.length > 1 ? `<button class="col-settings-delete" id="colSettingsDelete">✕ Supprimer la colonne</button>` : ''}
   `;
   const rect = anchorBtn.getBoundingClientRect();
-  const popW = 220;
+  const popW = 240;
   p.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - popW - 8)) + 'px';
   p.style.top = (rect.bottom + 6) + 'px';
   p.dataset.colid = colId;
@@ -152,6 +238,67 @@ function openColSettingsPopover(colId, anchorBtn){
         inp.style.textAlign = align2;
       });
       await persistCustomTab();
+    });
+  });
+  p.querySelector('#colSettingsFontSize').addEventListener('input', (e) => {
+    const size = parseInt(e.target.value, 10);
+    col.fontSize = size;
+    p.querySelector('#colSettingsFontSizeVal').textContent = size + 'px';
+    livePreviewColumnFontSize(colId, size);
+  });
+  p.querySelector('#colSettingsFontSize').addEventListener('change', async () => {
+    await persistCustomTab();
+  });
+  p.querySelector('#colSettingsFontReset').addEventListener('click', async () => {
+    col.fontSize = null;
+    p.querySelector('#colSettingsFontSize').value = CUSTOM_COL_DEFAULT_FONTSIZE;
+    p.querySelector('#colSettingsFontSizeVal').textContent = CUSTOM_COL_DEFAULT_FONTSIZE + 'px';
+    livePreviewColumnFontSize(colId, CUSTOM_COL_DEFAULT_FONTSIZE);
+    await persistCustomTab();
+  });
+  p.querySelector('#colSettingsType').addEventListener('change', async (e) => {
+    col.cellType = e.target.value;
+    if(col.cellType === 'status' && !Array.isArray(col.options)) col.options = [];
+    renderCustomTable();
+    await persistCustomTab();
+    openColSettingsPopover(colId, document.querySelector(`[data-colgear="${colId}"]`) || anchorBtn);
+  });
+  const optAdd = p.querySelector('#colStatusOptAdd');
+  if(optAdd) optAdd.addEventListener('click', async () => {
+    col.options = col.options || [];
+    col.options.push({id: cryptoId(), label: 'Nouvelle option', color: '#8E7CC3'});
+    renderCustomTable();
+    await persistCustomTab();
+    openColSettingsPopover(colId, document.querySelector(`[data-colgear="${colId}"]`) || anchorBtn);
+  });
+  p.querySelectorAll('.col-status-opt-color').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const row = inp.closest('.col-status-option-row');
+      const opt = (col.options||[]).find(o => o.id === row.dataset.optid);
+      if(!opt) return;
+      opt.color = inp.value;
+      renderCustomTable();
+      await persistCustomTab();
+      openColSettingsPopover(colId, document.querySelector(`[data-colgear="${colId}"]`) || anchorBtn);
+    });
+  });
+  p.querySelectorAll('.col-status-opt-label').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const row = inp.closest('.col-status-option-row');
+      const opt = (col.options||[]).find(o => o.id === row.dataset.optid);
+      if(!opt) return;
+      opt.label = inp.value;
+      renderCustomTable();
+      await persistCustomTab();
+      openColSettingsPopover(colId, document.querySelector(`[data-colgear="${colId}"]`) || anchorBtn);
+    });
+  });
+  p.querySelectorAll('[data-optdel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      col.options = (col.options||[]).filter(o => o.id !== btn.dataset.optdel);
+      renderCustomTable();
+      await persistCustomTab();
+      openColSettingsPopover(colId, document.querySelector(`[data-colgear="${colId}"]`) || anchorBtn);
     });
   });
   const delBtn = p.querySelector('#colSettingsDelete');
@@ -366,6 +513,9 @@ function normalizeMealDataOnLoad(d){
       if(col.align === undefined) col.align = 'left';
       if(col.color === undefined) col.color = null;
       if(!col.width) col.width = CUSTOM_COL_DEFAULT_WIDTH;
+      if(col.fontSize === undefined) col.fontSize = null;
+      if(!col.cellType) col.cellType = 'text';
+      if(col.cellType === 'status' && !Array.isArray(col.options)) col.options = [];
     });
   }
   return d;
@@ -373,6 +523,8 @@ function normalizeMealDataOnLoad(d){
 
 async function switchAppTab(tabId){
   closeColSettingsPopover();
+  customSortState = { colId: null, dir: null };
+  customSearchTerm = '';
   activeAppTab = tabId;
   document.getElementById('app-tab-planning').style.display = tabId === 'planning' ? '' : 'none';
   document.getElementById('app-tab-custom').style.display = tabId === 'planning' ? 'none' : '';
@@ -421,6 +573,131 @@ function updateCustomToolbarForType(){
   document.getElementById('btnImportSuiviExcel').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnExportSuivi').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnConvertSuivi').style.display = isGeneric ? '' : 'none';
+  ensureGenericToolbarButtons();
+  const genericBtnIds = ['btnGenericSaveTemplate','btnGenericExportExcel','btnGenericImportExcel'];
+  genericBtnIds.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = isGeneric ? '' : 'none'; });
+}
+/* --- Boutons de barre d'outils créés dynamiquement pour le tableau libre (modèle, import/export Excel) --- */
+const GENERIC_COLUMN_TEMPLATE_KEY = 'po:generic-column-template';
+function ensureGenericToolbarButtons(){
+  if(document.getElementById('btnGenericExportExcel')) return;
+  const anchor = document.getElementById('btnAddRow');
+  if(!anchor || !anchor.parentElement) return;
+  const toolbar = anchor.parentElement;
+
+  const btnTemplate = document.createElement('button');
+  btnTemplate.type = 'button';
+  btnTemplate.className = 'btn';
+  btnTemplate.id = 'btnGenericSaveTemplate';
+  btnTemplate.textContent = '💾 Enregistrer les colonnes comme modèle';
+  toolbar.insertBefore(btnTemplate, anchor.nextSibling);
+
+  const btnExport = document.createElement('button');
+  btnExport.type = 'button';
+  btnExport.className = 'btn';
+  btnExport.id = 'btnGenericExportExcel';
+  btnExport.textContent = '⬇️ Exporter en Excel';
+  toolbar.insertBefore(btnExport, btnTemplate.nextSibling);
+
+  const btnImport = document.createElement('button');
+  btnImport.type = 'button';
+  btnImport.className = 'btn';
+  btnImport.id = 'btnGenericImportExcel';
+  btnImport.textContent = '📥 Importer un fichier Excel';
+  toolbar.insertBefore(btnImport, btnExport.nextSibling);
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.id = 'genericExcelFileInput';
+  fileInput.accept = '.xlsx,.xls,.csv';
+  fileInput.style.display = 'none';
+  toolbar.insertBefore(fileInput, btnImport.nextSibling);
+
+  btnImport.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', handleGenericExcelImport);
+  btnExport.addEventListener('click', handleGenericExcelExport);
+  btnTemplate.addEventListener('click', handleSaveGenericColumnTemplate);
+}
+function genericCellDisplayValue(col, val){
+  const type = col.cellType || 'text';
+  if(type === 'checkbox') return val === true ? 'Oui' : 'Non';
+  if(type === 'status'){
+    const opt = (col.options || []).find(o => o.id === val);
+    return opt ? opt.label : '';
+  }
+  return (val === undefined || val === null) ? '' : val;
+}
+async function handleGenericExcelExport(){
+  if(typeof XLSX === 'undefined'){
+    alert("La librairie Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
+    return;
+  }
+  const d = activeCustomTabData;
+  const header = d.columns.map(c => c.label);
+  const aoa = [header];
+  d.rows.forEach(row => {
+    aoa.push(d.columns.map(col => genericCellDisplayValue(col, row.cells[col.id])));
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  const tabName = (customTabs.find(t => t.id === activeCustomTabId) || {}).name || 'Tableau';
+  XLSX.utils.book_append_sheet(wb, ws, tabName.replace(/[\[\]\*\/\\\?:]/g,'').slice(0,31) || 'Feuille1');
+  const safeName = tabName.replace(/[^a-z0-9_\-]+/gi, '_');
+  XLSX.writeFile(wb, `${safeName}-${todayIso()}.xlsx`);
+  logChange(`a exporté l'onglet « ${tabName} » en fichier Excel`);
+}
+async function handleGenericExcelImport(e){
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    alert("La librairie Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
+    return;
+  }
+  if(!confirm("Importer ce fichier va remplacer les colonnes et les lignes actuelles de cet onglet par le contenu du fichier. Continuer ?")) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+    if(!rows.length){ alert('Fichier vide.'); return; }
+    const header = rows[0];
+    const newColumns = header.map((label, i) => ({
+      id: cryptoId(), label: String(label || `Colonne ${i+1}`), align:'left', color:null,
+      width: CUSTOM_COL_DEFAULT_WIDTH, fontSize:null, cellType:'text'
+    }));
+    const newRows = [];
+    for(let r=1; r<rows.length; r++){
+      const rawRow = rows[r] || [];
+      if(rawRow.every(v => v === '' || v === undefined || v === null)) continue;
+      const cells = {};
+      newColumns.forEach((col, i) => { cells[col.id] = rawRow[i] !== undefined ? String(rawRow[i]) : ''; });
+      newRows.push({id: cryptoId(), cells});
+    }
+    activeCustomTabData.columns = newColumns;
+    activeCustomTabData.rows = newRows.length ? newRows : [{id: cryptoId(), cells: {}}];
+    customSortState = {colId:null, dir:null};
+    customSearchTerm = '';
+    renderCustomTable();
+    await persistCustomTab();
+    const tabName = (customTabs.find(t => t.id === activeCustomTabId) || {}).name || 'Tableau';
+    logChange(`a importé un fichier Excel dans « ${tabName} » (${newColumns.length} colonne(s), ${newRows.length} ligne(s))`);
+    alert(`Import terminé : ${newColumns.length} colonne(s), ${newRows.length} ligne(s).`);
+  } catch(err){
+    alert("Impossible de lire ce fichier. Vérifie qu'il s'agit bien d'un fichier Excel/CSV valide.\n\n" + (err && err.message ? err.message : ''));
+  }
+}
+async function handleSaveGenericColumnTemplate(){
+  const d = activeCustomTabData;
+  const template = d.columns.map(c => ({
+    label: c.label, align: c.align, color: c.color, width: c.width, fontSize: c.fontSize,
+    cellType: c.cellType || 'text',
+    options: (c.cellType === 'status') ? (c.options || []).map(o => ({label: o.label, color: o.color})) : undefined
+  }));
+  await storageSet(GENERIC_COLUMN_TEMPLATE_KEY, template);
+  const tabName = (customTabs.find(t => t.id === activeCustomTabId) || {}).name || 'Tableau';
+  logChange(`a enregistré la structure de colonnes de « ${tabName} » comme modèle`);
+  alert('Modèle de colonnes enregistré. Il sera proposé à la création du prochain nouvel onglet.');
 }
 
 function attachCustomTabListener(tabId){
@@ -449,6 +726,86 @@ async function persistCustomTab(){
 }
 function setStatus2(elId, text, cls){ const el = document.getElementById(elId); el.textContent = text; el.className = 'status' + (cls ? ' '+cls : ''); }
 
+/* --- Tri d'affichage, recherche, et rendu de cellule selon le type de colonne (tableau libre) --- */
+function sortRowsForDisplay(d, sortState){
+  if(!sortState || !sortState.colId) return d.rows;
+  const col = d.columns.find(c => c.id === sortState.colId);
+  if(!col) return d.rows;
+  const dir = sortState.dir === 'desc' ? -1 : 1;
+  const rows = [...d.rows];
+  const type = col.cellType || 'text';
+  rows.sort((a, b) => {
+    let va = a.cells[col.id], vb = b.cells[col.id];
+    if(type === 'number'){
+      va = (va === undefined || va === '') ? null : parseFloat(va);
+      vb = (vb === undefined || vb === '') ? null : parseFloat(vb);
+      if(va === null && vb === null) return 0;
+      if(va === null) return 1;
+      if(vb === null) return -1;
+      return (va - vb) * dir;
+    }
+    if(type === 'checkbox'){
+      return (((va === true) ? 1 : 0) - ((vb === true) ? 1 : 0)) * dir;
+    }
+    if(type === 'status'){
+      const opts = col.options || [];
+      const ia = opts.findIndex(o => o.id === va), ib = opts.findIndex(o => o.id === vb);
+      return ((ia < 0 ? 9999 : ia) - (ib < 0 ? 9999 : ib)) * dir;
+    }
+    return String(va || '').localeCompare(String(vb || ''), 'fr', {numeric: true}) * dir;
+  });
+  return rows;
+}
+function rowMatchesSearch(d, row, term){
+  const t = term.toLowerCase();
+  return d.columns.some(col => {
+    const v = row.cells[col.id];
+    if(v === undefined || v === null || v === '') return false;
+    const type = col.cellType || 'text';
+    if(type === 'checkbox') return false;
+    if(type === 'status'){
+      const opt = (col.options || []).find(o => o.id === v);
+      return !!opt && opt.label.toLowerCase().includes(t);
+    }
+    return String(v).toLowerCase().includes(t);
+  });
+}
+function buildCustomCellHtml(col, row){
+  const cellType = col.cellType || 'text';
+  const align = col.align || 'left';
+  const txtColor = colContrastColor(col.color);
+  const fontSize = col.fontSize || CUSTOM_COL_DEFAULT_FONTSIZE;
+  const scale = Math.max(.75, Math.min(1.8, fontSize / CUSTOM_COL_DEFAULT_FONTSIZE));
+  const tdStyle = col.color ? `background:${col.color};` : '';
+  const txtStyle = `text-align:${align};font-size:${fontSize}px;${txtColor ? `color:${txtColor};` : ''}`;
+  if(cellType === 'checkbox'){
+    const checked = row.cells[col.id] === true;
+    return `<td class="custom-cell" style="${tdStyle}text-align:center;" data-colcell="${col.id}"><input type="checkbox" data-colid="${col.id}" ${checked?'checked':''} style="cursor:pointer;transform:scale(${scale});accent-color:var(--violet);" /></td>`;
+  }
+  if(cellType === 'date'){
+    const val = row.cells[col.id] || '';
+    return `<td class="custom-cell" style="${tdStyle}" data-colcell="${col.id}"><input type="date" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
+  }
+  if(cellType === 'number'){
+    const val = row.cells[col.id];
+    return `<td class="custom-cell" style="${tdStyle}" data-colcell="${col.id}"><input type="number" step="any" value="${(val===undefined||val===null||val==='')?'':val}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
+  }
+  if(cellType === 'status'){
+    const options = col.options || [];
+    const selectedId = row.cells[col.id] || '';
+    const selOpt = options.find(o => o.id === selectedId);
+    const bg = selOpt ? selOpt.color : '#ffffff';
+    const fg = selOpt ? (colContrastColor(selOpt.color) || '#242220') : 'var(--ink-soft)';
+    let selHtml = `<select data-colid="${col.id}" class="custom-status-select" style="background:${bg};color:${fg};font-size:${fontSize}px;">`;
+    selHtml += `<option value="">—</option>`;
+    options.forEach(o => { selHtml += `<option value="${o.id}" ${o.id===selectedId?'selected':''}>${escapeHtml(o.label)}</option>`; });
+    selHtml += '</select>';
+    return `<td class="custom-cell" style="${tdStyle}text-align:center;" data-colcell="${col.id}">${selHtml}</td>`;
+  }
+  const val = row.cells[col.id] || '';
+  return `<td class="custom-cell" style="${tdStyle}" data-colcell="${col.id}"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
+}
+
 function renderCustomTable(){
   if(activeCustomTabData && activeCustomTabData.type === 'mealplanning'){
     renderMealPlanningGrid();
@@ -473,35 +830,88 @@ function renderCustomTable(){
     return;
   }
   injectCustomTabExtraStyles();
-  let html = '<table class="custom-table"><colgroup>';
+
+  const activeEl = document.activeElement;
+  const hadSearchFocus = activeEl && activeEl.id === 'customSearchInput';
+  const searchCaret = hadSearchFocus ? activeEl.selectionStart : null;
+
+  const hasNumberCol = d.columns.some(c => c.cellType === 'number');
+  let displayRows = sortRowsForDisplay(d, customSortState);
+  if(customSearchTerm) displayRows = displayRows.filter(r => rowMatchesSearch(d, r, customSearchTerm));
+
+  let html = `<div class="custom-search-bar">
+    <input type="text" id="customSearchInput" placeholder="🔎 Rechercher dans ce tableau…" value="${escapeHtml(customSearchTerm)}" />
+    ${customSearchTerm ? `<span class="custom-search-count">${displayRows.length} / ${d.rows.length} ligne(s)</span>` : ''}
+  </div>`;
+
+  html += '<table class="custom-table"><colgroup>';
   d.columns.forEach(col => { html += `<col style="width:${col.width || CUSTOM_COL_DEFAULT_WIDTH}px">`; });
-  html += '<col style="width:36px"></colgroup><thead><tr>';
-  d.columns.forEach(col => {
+  html += '<col style="width:76px"></colgroup><thead><tr>';
+  d.columns.forEach((col, idx) => {
     const align = col.align || 'left';
     const txtColor = colContrastColor(col.color);
-    const thStyle = col.color ? `background:${col.color};` : '';
-    const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
-    html += `<th style="${thStyle}" data-colhead="${col.id}"><div class="custom-col-head">
+    const fontSize = col.fontSize || CUSTOM_COL_DEFAULT_FONTSIZE;
+    const frozen = idx === 0 ? 'position:sticky;left:0;z-index:3;' : '';
+    const thStyle = `${col.color ? `background:${col.color};` : (idx===0 ? 'background:var(--panel);' : '')}${frozen}`;
+    const txtStyle = `text-align:${align};font-size:${fontSize}px;${txtColor ? `color:${txtColor};` : ''}`;
+    const sortDir = customSortState.colId === col.id ? customSortState.dir : null;
+    const sortIcon = sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '⇅';
+    html += `<th style="${thStyle}" data-colhead="${col.id}" draggable="true"><div class="custom-col-head">
       <input type="text" value="${escapeHtml(col.label)}" data-colid="${col.id}" class="custom-col-input" style="${txtStyle}" />
-      <button class="custom-col-gear" data-colgear="${col.id}" title="Réglages de la colonne (couleur, alignement, suppression)">⚙</button>
+      <button class="custom-col-sort ${sortDir?'active':''}" data-colsort="${col.id}" title="Trier par cette colonne">${sortIcon}</button>
+      <button class="custom-col-gear" data-colgear="${col.id}" title="Réglages de la colonne (couleur, alignement, taille, type, suppression)">⚙</button>
       <span class="custom-col-resize" data-colresize="${col.id}" title="Glisser pour redimensionner"></span>
     </div></th>`;
   });
-  html += '<th style="width:36px;"></th></tr></thead><tbody>';
-  d.rows.forEach(row => {
+  html += '<th style="width:76px;"></th></tr></thead><tbody>';
+
+  if(!displayRows.length){
+    html += `<tr><td colspan="${d.columns.length+1}" style="padding:18px;text-align:center;color:var(--ink-soft);">${customSearchTerm ? 'Aucune ligne ne correspond à la recherche' : 'Aucune ligne'}</td></tr>`;
+  }
+  displayRows.forEach(row => {
     html += `<tr data-rowid="${row.id}">`;
-    d.columns.forEach(col => {
-      const val = row.cells[col.id] || '';
-      const align = col.align || 'left';
-      const txtColor = colContrastColor(col.color);
-      const tdStyle = col.color ? `background:${col.color};` : '';
-      const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
-      html += `<td class="custom-cell" style="${tdStyle}" data-colcell="${col.id}"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
+    d.columns.forEach((col, idx) => {
+      let cellHtml = buildCustomCellHtml(col, row);
+      if(idx === 0){
+        cellHtml = cellHtml.replace('style="', `style="position:sticky;left:0;z-index:1;background:${col.color || 'var(--panel)'};`);
+      }
+      html += cellHtml;
     });
-    html += `<td class="custom-row-actions"><button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button></td></tr>`;
+    html += `<td class="custom-row-actions">
+      <button class="remove-x" data-rowdup="${row.id}" title="Dupliquer cette ligne" style="opacity:.5;">⧉</button>
+      <button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button>
+    </td></tr>`;
   });
-  html += '</tbody></table>';
+  html += '</tbody>';
+
+  if(hasNumberCol){
+    html += '<tfoot><tr class="custom-total-row">';
+    d.columns.forEach((col, idx) => {
+      if(idx === 0){
+        html += `<td style="font-weight:700;padding:8px;position:sticky;left:0;background:var(--panel);">Total</td>`;
+      } else if(col.cellType === 'number'){
+        const sum = displayRows.reduce((acc, r) => acc + (parseFloat(r.cells[col.id]) || 0), 0);
+        html += `<td style="font-weight:700;text-align:${col.align||'left'};padding:8px;">${Math.round(sum*100)/100}</td>`;
+      } else {
+        html += '<td></td>';
+      }
+    });
+    html += '<td></td></tr></tfoot>';
+  }
+  html += '</table>';
   shell.innerHTML = html;
+
+  const searchInput = document.getElementById('customSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', (e) => {
+      customSearchTerm = e.target.value;
+      renderCustomTable();
+    });
+    if(hadSearchFocus){
+      searchInput.focus();
+      try{ searchInput.setSelectionRange(searchCaret, searchCaret); } catch(e){}
+    }
+  }
 
   shell.querySelectorAll('.custom-col-input').forEach(inp => {
     inp.addEventListener('change', async () => {
@@ -509,6 +919,16 @@ function renderCustomTable(){
       if(!col) return;
       col.label = inp.value;
       await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-colsort]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const colId = btn.dataset.colsort;
+      if(customSortState.colId !== colId){ customSortState = {colId, dir:'asc'}; }
+      else if(customSortState.dir === 'asc'){ customSortState.dir = 'desc'; }
+      else { customSortState = {colId:null, dir:null}; }
+      renderCustomTable();
     });
   });
   shell.querySelectorAll('[data-colgear]').forEach(btn => {
@@ -523,15 +943,30 @@ function renderCustomTable(){
     });
   });
   wireCustomColumnResize(shell, d);
+  wireCustomColumnReorder(shell, d);
   shell.querySelectorAll('tr[data-rowid]').forEach(tr => {
     const rowId = tr.dataset.rowid;
-    tr.querySelectorAll('td.custom-cell input').forEach(inp => {
+    tr.querySelectorAll('td.custom-cell input, td.custom-cell select').forEach(inp => {
       inp.addEventListener('change', async () => {
         const row = d.rows.find(r => r.id === rowId);
         if(!row) return;
-        row.cells[inp.dataset.colid] = inp.value;
+        row.cells[inp.dataset.colid] = inp.type === 'checkbox' ? inp.checked : inp.value;
+        if(inp.tagName === 'SELECT'){
+          renderCustomTable();
+        }
         await persistCustomTab();
       });
+    });
+  });
+  shell.querySelectorAll('[data-rowdup]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const rowId = btn.dataset.rowdup;
+      const idx = d.rows.findIndex(r => r.id === rowId);
+      if(idx < 0) return;
+      const copy = {id: cryptoId(), cells: Object.assign({}, d.rows[idx].cells)};
+      d.rows.splice(idx+1, 0, copy);
+      renderCustomTable();
+      await persistCustomTab();
     });
   });
   shell.querySelectorAll('[data-rowdel]').forEach(btn => {
@@ -551,6 +986,38 @@ function renderCustomTable(){
     });
   });
   wireCustomTableNav(shell);
+}
+function wireCustomColumnReorder(shell, d){
+  let dragColId = null;
+  shell.querySelectorAll('th[data-colhead]').forEach(th => {
+    th.addEventListener('dragstart', (e) => {
+      if(e.target.closest('.custom-col-resize') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON'){
+        e.preventDefault();
+        return;
+      }
+      dragColId = th.dataset.colhead;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    th.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      th.classList.add('custom-col-dragover');
+    });
+    th.addEventListener('dragleave', () => th.classList.remove('custom-col-dragover'));
+    th.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      th.classList.remove('custom-col-dragover');
+      const targetColId = th.dataset.colhead;
+      if(!dragColId || dragColId === targetColId) return;
+      const fromIdx = d.columns.findIndex(c => c.id === dragColId);
+      const toIdx = d.columns.findIndex(c => c.id === targetColId);
+      if(fromIdx < 0 || toIdx < 0) return;
+      const [moved] = d.columns.splice(fromIdx, 1);
+      d.columns.splice(toIdx, 0, moved);
+      dragColId = null;
+      renderCustomTable();
+      await persistCustomTab();
+    });
+  });
 }
 function wireCustomTableNav(shell){
   const inputs = Array.from(shell.querySelectorAll('td.custom-cell input'));
@@ -839,7 +1306,7 @@ document.getElementById('btnConvertMealPlanning').addEventListener('click', asyn
 });
 
 document.getElementById('btnAddColumn').addEventListener('click', async () => {
-  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne', align:'left', color:null, width: CUSTOM_COL_DEFAULT_WIDTH});
+  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne', align:'left', color:null, width: CUSTOM_COL_DEFAULT_WIDTH, fontSize:null, cellType:'text'});
   renderCustomTable();
   await persistCustomTab();
 });
@@ -864,7 +1331,22 @@ async function addAppTab(){
   const newTab = {id: cryptoId(), name: name.trim()};
   customTabs.push(newTab);
   await storageSet(CUSTOMTABS_INDEX_KEY, customTabs);
-  await storageSet(customTabKey(newTab.id), defaultCustomTabData());
+  let initialData = defaultCustomTabData();
+  try{
+    const template = await storageGet(GENERIC_COLUMN_TEMPLATE_KEY);
+    if(Array.isArray(template) && template.length && confirm(`Un modèle de colonnes est enregistré (${template.length} colonne(s)). L'utiliser pour ce nouvel onglet ?`)){
+      initialData = {
+        type: 'generic',
+        columns: template.map(t => ({
+          id: cryptoId(), label: t.label, align: t.align || 'left', color: t.color || null,
+          width: t.width || CUSTOM_COL_DEFAULT_WIDTH, fontSize: t.fontSize || null, cellType: t.cellType || 'text',
+          options: (t.cellType === 'status') ? (t.options || []).map(o => ({id: cryptoId(), label: o.label, color: o.color})) : undefined
+        })),
+        rows: [{id: cryptoId(), cells: {}}]
+      };
+    }
+  } catch(e){ /* pas de modèle disponible, tant pis */ }
+  await storageSet(customTabKey(newTab.id), initialData);
   renderAppTabs();
   switchAppTab(newTab.id);
 }
