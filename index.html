@@ -560,8 +560,21 @@
   </section>
 </div>
 
-<script src="shared.js"></script>
-<script src="planning.js"></script>
-<script src="customtabs.js"></script>
+<script>
+(function(){
+  var v = Date.now(); // change à chaque chargement de page : force le re-téléchargement
+  var scripts = ['shared.js', 'planning.js', 'customtabs.js'];
+  var i = 0;
+  function loadNext(){
+    if(i >= scripts.length) return;
+    var s = document.createElement('script');
+    s.src = scripts[i] + '?v=' + v;
+    s.onload = function(){ i++; loadNext(); };
+    s.onerror = function(){ console.error('Échec du chargement de ' + scripts[i]); };
+    document.body.appendChild(s);
+  }
+  loadNext();
+})();
+</script>
 </body>
 </html>
