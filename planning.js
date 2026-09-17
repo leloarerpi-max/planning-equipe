@@ -698,6 +698,7 @@ const TASK_CATEGORIES = [
   {label:'MAIL', tasks:['Édition mail','Mail prélèvement','Mail RIB','Affaire nouvelle']},
   {label:'AVENANTS', tasks:['Avenants (mail)','Avenant (workflow résil 2 - sheet planning)']},
   {label:'ECHANGES CLTS', tasks:['Échange client + échange résil J+1']},
+  {label:'URGENCES', tasks:['Cloches','Urgences']},
   {label:'EDITIONS', tasks:['Sheet "hors périmètre" matin','Certificat à générer','Tableau de bord édition']},
   {label:'ECHANGE', tasks:['Échange édition TN','Échange édition BPA','Échange avenant sur acquisition','Échange avenant modification banque','Échange avenant acceptation banque','Échange suivi substi','Échange modif RIB','Échange attestation','Échange autre','Échange VIP']},
   {label:'RESIL', tasks:['Échange résiliation','Mail résil']},
@@ -987,10 +988,12 @@ async function computeAndRenderStats(){
   const totalsEl = document.getElementById('statsTotals');
   const tableShell = document.getElementById('statsTableShell');
   const echangesShell = document.getElementById('statsEchangesShell');
+  const urgencesShell = document.getElementById('statsUrgencesShell');
   loading.style.display = 'block';
   totalsEl.innerHTML = '';
   tableShell.innerHTML = '';
   echangesShell.innerHTML = '';
+  if(urgencesShell) urgencesShell.innerHTML = '';
 
   // Load every day (cache avoids re-fetching days already seen this session)
   const allDaysWithDate = await Promise.all(daysIndex.map(async d => ({date: d, data: await loadDayData(d)})));
@@ -1002,6 +1005,9 @@ async function computeAndRenderStats(){
 
   const echangesClientNames = (TASK_CATEGORIES.find(c => c.label === 'ECHANGES CLTS') || {tasks:[]}).tasks.map(normTaskName);
   const monthlyEchanges = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }
+
+  const urgencesNames = (TASK_CATEGORIES.find(c => c.label === 'URGENCES') || {tasks:[]}).tasks.map(normTaskName);
+  const monthlyUrgences = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }
 
   allDaysWithDate.forEach(({date, data}) => {
     const monthKey = date.slice(0,7);
@@ -1024,6 +1030,16 @@ async function computeAndRenderStats(){
           if(!people.some(p => p.id === pid)) return; // person no longer exists
           monthlyEchanges[monthKey] = monthlyEchanges[monthKey] || {};
           monthlyEchanges[monthKey][pid] = (monthlyEchanges[monthKey][pid] || 0) + share;
+        });
+      }
+      if(urgencesNames.includes(normTaskName(t.name))){
+        const ids = t.personIds || [];
+        if(!ids.length) return;
+        const share = (Number(t.objectif) || 0) / ids.length;
+        ids.forEach(pid => {
+          if(!people.some(p => p.id === pid)) return; // person no longer exists
+          monthlyUrgences[monthKey] = monthlyUrgences[monthKey] || {};
+          monthlyUrgences[monthKey][pid] = (monthlyUrgences[monthKey][pid] || 0) + share;
         });
       }
     });
@@ -1090,6 +1106,33 @@ async function computeAndRenderStats(){
     });
     html2 += '</tbody></table>';
     echangesShell.innerHTML = html2;
+  }
+
+  // Urgences par personne et par mois
+  if(urgencesShell){
+    const urgMonthKeys = Object.keys(monthlyUrgences).sort();
+    if(!urgMonthKeys.length || !people.length){
+      urgencesShell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>';
+    } else {
+      let html3 = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+      people.forEach(p => { html3 += `<th>${escapeHtml(p.name)}</th>`; });
+      html3 += '<th>Total</th></tr></thead><tbody>';
+      urgMonthKeys.forEach(mk => {
+        html3 += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+        const rowVals = people.map(p => Math.round((monthlyUrgences[mk][p.id] || 0) * 10) / 10);
+        const rowMax = Math.max(...rowVals, 0);
+        let rowTotal = 0;
+        people.forEach((p, i) => {
+          const v = rowVals[i];
+          rowTotal += v;
+          const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+          html3 += `<td class="${cls}">${v || ''}</td>`;
+        });
+        html3 += `<td style="font-weight:700;">${Math.round(rowTotal*10)/10}</td></tr>`;
+      });
+      html3 += '</tbody></table>';
+      urgencesShell.innerHTML = html3;
+    }
   }
 }
 
