@@ -17,9 +17,24 @@ let customTabListenerRef = null;
 function defaultCustomTabData(){
   return {
     type: 'generic',
-    columns: [ {id:'c1', label:'Colonne 1'}, {id:'c2', label:'Colonne 2'} ],
+    columns: [ {id:'c1', label:'Colonne 1', align:'left', color:null}, {id:'c2', label:'Colonne 2', align:'left', color:null} ],
     rows: [ {id: cryptoId(), cells: {}} ]
   };
+}
+/* --- Personnalisation des colonnes (tableau libre) : couleur + alignement --- */
+function nextColAlign(a){ return a === 'left' ? 'center' : a === 'center' ? 'right' : 'left'; }
+function colAlignLabel(a){ return a === 'center' ? 'C' : a === 'right' ? 'D' : 'G'; }
+function colAlignTitle(a){
+  return a === 'center' ? 'Centré — cliquer pour aligner à droite'
+       : a === 'right' ? 'Aligné à droite — cliquer pour aligner à gauche'
+       : 'Aligné à gauche — cliquer pour centrer';
+}
+function colContrastColor(hex){
+  if(!hex || hex.length !== 7) return null;
+  const r = parseInt(hex.substr(1,2),16), g = parseInt(hex.substr(3,2),16), b = parseInt(hex.substr(5,2),16);
+  if([r,g,b].some(isNaN)) return null;
+  const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+  return lum > 0.6 ? '#242220' : '#ffffff';
 }
 function defaultMealPlanningData(){
   return {
@@ -188,6 +203,12 @@ function renderAppTabs(){
 function normalizeMealDataOnLoad(d){
   if(d && d.type === 'mealplanning' && !d.shifts) d.shifts = {};
   if(d && d.type === 'suivi' && !d.days) d.days = [];
+  if(d && Array.isArray(d.columns)){
+    d.columns.forEach(col => {
+      if(col.align === undefined) col.align = 'left';
+      if(col.color === undefined) col.color = null;
+    });
+  }
   return d;
 }
 
@@ -293,8 +314,15 @@ function renderCustomTable(){
   }
   let html = '<table class="custom-table"><thead><tr>';
   d.columns.forEach(col => {
-    html += `<th><div class="custom-col-head">
-      <input type="text" value="${escapeHtml(col.label)}" data-colid="${col.id}" class="custom-col-input" />
+    const align = col.align || 'left';
+    const txtColor = colContrastColor(col.color);
+    const thStyle = col.color ? `background:${col.color};` : '';
+    const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
+    html += `<th style="${thStyle}"><div class="custom-col-head">
+      <input type="text" value="${escapeHtml(col.label)}" data-colid="${col.id}" class="custom-col-input" style="${txtStyle}" />
+      <input type="color" class="custom-col-color" data-colcolor="${col.id}" value="${col.color || '#ffffff'}" title="Couleur de fond de la colonne" style="width:22px;height:22px;padding:0;border:1px solid var(--line-strong);border-radius:3px;cursor:pointer;flex-shrink:0;background:none;" />
+      <button class="custom-col-del" data-colclear="${col.id}" title="Retirer la couleur" style="opacity:${col.color ? '.6' : '.2'};">⌫</button>
+      <button class="custom-col-del" data-colalign="${col.id}" title="${colAlignTitle(align)}" style="opacity:.6; font-weight:800;">${colAlignLabel(align)}</button>
       ${d.columns.length > 1 ? `<button class="custom-col-del" data-coldel="${col.id}" title="Supprimer la colonne">✕</button>` : ''}
     </div></th>`;
   });
@@ -303,7 +331,11 @@ function renderCustomTable(){
     html += `<tr data-rowid="${row.id}">`;
     d.columns.forEach(col => {
       const val = row.cells[col.id] || '';
-      html += `<td class="custom-cell"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" /></td>`;
+      const align = col.align || 'left';
+      const txtColor = colContrastColor(col.color);
+      const tdStyle = col.color ? `background:${col.color};` : '';
+      const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
+      html += `<td class="custom-cell" style="${tdStyle}"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
     });
     html += `<td class="custom-row-actions"><button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button></td></tr>`;
   });
@@ -318,7 +350,34 @@ function renderCustomTable(){
       await persistCustomTab();
     });
   });
-  shell.querySelectorAll('.custom-col-del').forEach(btn => {
+  shell.querySelectorAll('.custom-col-color').forEach(inp => {
+    inp.addEventListener('input', async () => {
+      const col = d.columns.find(c => c.id === inp.dataset.colcolor);
+      if(!col) return;
+      col.color = inp.value;
+      renderCustomTable();
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-colclear]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const col = d.columns.find(c => c.id === btn.dataset.colclear);
+      if(!col) return;
+      col.color = null;
+      renderCustomTable();
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('[data-colalign]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const col = d.columns.find(c => c.id === btn.dataset.colalign);
+      if(!col) return;
+      col.align = nextColAlign(col.align || 'left');
+      renderCustomTable();
+      await persistCustomTab();
+    });
+  });
+  shell.querySelectorAll('.custom-col-del[data-coldel]').forEach(btn => {
     btn.addEventListener('click', async () => {
       d.columns = d.columns.filter(c => c.id !== btn.dataset.coldel);
       renderCustomTable();
@@ -641,7 +700,7 @@ document.getElementById('btnConvertMealPlanning').addEventListener('click', asyn
 });
 
 document.getElementById('btnAddColumn').addEventListener('click', async () => {
-  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne'});
+  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne', align:'left', color:null});
   renderCustomTable();
   await persistCustomTab();
 });
