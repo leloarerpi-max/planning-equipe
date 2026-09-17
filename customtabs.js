@@ -15,6 +15,7 @@ let activeCustomTabData = null; // {columns:[{id,label}], rows:[{id, cells:{colI
 let customTabListenerRef = null;
 let customSortState = { colId: null, dir: null };  // tri d'affichage uniquement, non enregistré
 let customSearchTerm = '';                          // recherche d'affichage uniquement, non enregistrée
+let genericStatsOpen = false;                       // panneau "Statistiques par personne et par mois" (tableau libre)
 
 function defaultCustomTabData(){
   return {
@@ -35,6 +36,161 @@ function colContrastColor(hex){
   if([r,g,b].some(isNaN)) return null;
   const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
   return lum > 0.6 ? '#242220' : '#ffffff';
+}
+/* --- Statistiques "par personne et par mois" pour un onglet tableau libre (ex : fichier Urgences importé) --- */
+const STATS_MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+function extractMonthKeyFromValue(val){
+  if(val === undefined || val === null || val === '') return null;
+  const s = String(val).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-\d{2}/);           // date au format ISO (colonne de type "Date")
+  if(m) return `${m[1]}-${m[2]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);     // jj/mm/aaaa ou jj/mm/aa
+  if(m){
+    let yy = m[3];
+    if(yy.length === 2) yy = '20' + yy;
+    return `${yy}-${m[2].padStart(2,'0')}`;
+  }
+  m = s.match(/^(\d{1,2})\/(\d{1,2})$/);                // jj/mm sans année (comme dans le fichier Urgences)
+  if(m) return `mois-${m[2].padStart(2,'0')}`;
+  return null;
+}
+function monthKeyLabel(key){
+  if(key.indexOf('mois-') === 0){
+    const mm = parseInt(key.slice(5), 10);
+    return STATS_MONTH_NAMES[mm-1] || key;
+  }
+  const parts = key.split('-');
+  return `${STATS_MONTH_NAMES[parseInt(parts[1],10)-1] || parts[1]} ${parts[0]}`;
+}
+function guessGenericStatsColumn(d, kind){
+  const cols = d.columns;
+  if(!cols.length) return null;
+  if(kind === 'date'){
+    const dateCol = cols.find(c => c.cellType === 'date') || cols.find(c => /date/i.test(c.label));
+    return (dateCol || cols[0]).label;
+  }
+  const personCol = cols.find(c => /personne|gestionnaire|traite|trait/i.test(c.label));
+  if(personCol) return personCol.label;
+  return cols[Math.min(8, cols.length-1)].label; // à défaut, colonne I (9e colonne) comme dans le fichier Urgences
+}
+function ensureGenericStatsPanel(){
+  if(document.getElementById('genericStatsPanel')) return;
+  const shell = document.getElementById('customTableShell');
+  if(!shell || !shell.parentElement) return;
+  const panel = document.createElement('div');
+  panel.id = 'genericStatsPanel';
+  panel.className = 'summary';
+  panel.style.display = 'none';
+  panel.innerHTML = `<h2>📊 Statistiques — lignes par personne et par mois</h2>
+    <p class="hint">Choisis la colonne qui contient la personne, et la colonne qui contient la date. Ça se recalcule tout seul à chaque import ou modification.</p>
+    <div id="genericStatsConfig"></div>
+    <div id="genericStatsResult"></div>`;
+  shell.parentElement.insertBefore(panel, shell.nextSibling);
+}
+function toggleGenericStatsPanel(){
+  ensureGenericStatsPanel();
+  genericStatsOpen = !genericStatsOpen;
+  const panel = document.getElementById('genericStatsPanel');
+  if(panel) panel.style.display = genericStatsOpen ? '' : 'none';
+  if(genericStatsOpen) renderGenericStatsPanel();
+}
+function renderGenericStatsPanel(){
+  const d = activeCustomTabData;
+  if(!d || d.type !== 'generic') return;
+  ensureGenericStatsPanel();
+  const configEl = document.getElementById('genericStatsConfig');
+  const resultEl = document.getElementById('genericStatsResult');
+  if(!configEl || !resultEl) return;
+  if(!d.columns.length){
+    configEl.innerHTML = '';
+    resultEl.innerHTML = '<p class="hint">Ajoute ou importe des colonnes pour pouvoir calculer une statistique.</p>';
+    return;
+  }
+  d.statsConfig = d.statsConfig || {};
+  const labels = d.columns.map(c => c.label);
+  let personLabel = d.statsConfig.personColLabel;
+  let dateLabel = d.statsConfig.dateColLabel;
+  if(!personLabel || labels.indexOf(personLabel) === -1) personLabel = guessGenericStatsColumn(d, 'person');
+  if(!dateLabel || labels.indexOf(dateLabel) === -1) dateLabel = guessGenericStatsColumn(d, 'date');
+
+  configEl.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:16px;">
+      <label style="font-size:12.5px;color:var(--ink-soft);">Colonne « personne » :
+        <select id="statsPersonCol" style="margin-left:6px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:4px;font-family:inherit;">
+          ${labels.map(l => `<option value="${escapeHtml(l)}" ${l===personLabel?'selected':''}>${escapeHtml(l)}</option>`).join('')}
+        </select>
+      </label>
+      <label style="font-size:12.5px;color:var(--ink-soft);">Colonne « date » :
+        <select id="statsDateCol" style="margin-left:6px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:4px;font-family:inherit;">
+          ${labels.map(l => `<option value="${escapeHtml(l)}" ${l===dateLabel?'selected':''}>${escapeHtml(l)}</option>`).join('')}
+        </select>
+      </label>
+      <button class="btn" id="statsRecalcBtn">Calculer et retenir ce choix</button>
+    </div>`;
+
+  document.getElementById('statsRecalcBtn').addEventListener('click', async () => {
+    d.statsConfig = {
+      personColLabel: document.getElementById('statsPersonCol').value,
+      dateColLabel: document.getElementById('statsDateCol').value
+    };
+    await persistCustomTab();
+    renderGenericStatsResult(d, d.statsConfig.personColLabel, d.statsConfig.dateColLabel);
+  });
+
+  renderGenericStatsResult(d, personLabel, dateLabel);
+}
+function renderGenericStatsResult(d, personLabel, dateLabel){
+  const resultEl = document.getElementById('genericStatsResult');
+  if(!resultEl) return;
+  const personCol = d.columns.find(c => c.label === personLabel);
+  const dateCol = d.columns.find(c => c.label === dateLabel);
+  if(!personCol || !dateCol){
+    resultEl.innerHTML = '<p class="hint">Choisis les deux colonnes ci-dessus puis clique sur « Calculer ».</p>';
+    return;
+  }
+  const counts = {};
+  const persons = new Set();
+  let ignored = 0;
+  d.rows.forEach(row => {
+    const personVal = (row.cells[personCol.id] || '').toString().trim();
+    const dateVal = row.cells[dateCol.id];
+    if(!personVal) return;
+    const monthKey = extractMonthKeyFromValue(dateVal);
+    if(!monthKey){ ignored++; return; }
+    persons.add(personVal);
+    counts[monthKey] = counts[monthKey] || {};
+    counts[monthKey][personVal] = (counts[monthKey][personVal] || 0) + 1;
+  });
+  const monthKeys = Object.keys(counts).sort();
+  const personList = Array.from(persons).sort((a,b) => a.localeCompare(b, 'fr'));
+  if(!monthKeys.length){
+    resultEl.innerHTML = `<p class="hint">Aucune ligne exploitable pour l'instant. Vérifie que « ${escapeHtml(dateCol.label)} » contient bien des dates et que « ${escapeHtml(personCol.label)} » n'est pas vide.</p>`;
+    return;
+  }
+  let html = '<div class="table-shell" style="overflow:auto;"><table class="stats-matrix"><thead><tr><th>Mois</th>';
+  personList.forEach(p => { html += `<th>${escapeHtml(p)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  const totalsByPerson = {};
+  personList.forEach(p => { totalsByPerson[p] = 0; });
+  let grandTotal = 0;
+  monthKeys.forEach(mk => {
+    html += `<tr><td class="stats-task-name">${escapeHtml(monthKeyLabel(mk))}</td>`;
+    let rowTotal = 0;
+    personList.forEach(p => {
+      const n = counts[mk][p] || 0;
+      rowTotal += n;
+      totalsByPerson[p] += n;
+      html += `<td class="${n>0?'stats-count-hi':'stats-count-0'}">${n || '—'}</td>`;
+    });
+    grandTotal += rowTotal;
+    html += `<td style="font-weight:800;">${rowTotal}</td></tr>`;
+  });
+  html += `<tr style="font-weight:800;border-top:2px solid var(--ink);"><td class="stats-task-name">Total</td>`;
+  personList.forEach(p => { html += `<td>${totalsByPerson[p]}</td>`; });
+  html += `<td>${grandTotal}</td></tr>`;
+  html += '</tbody></table></div>';
+  if(ignored) html += `<p class="hint" style="margin-top:8px;">${ignored} ligne(s) ignorée(s) car la date n'a pas été reconnue.</p>`;
+  resultEl.innerHTML = html;
 }
 function injectCustomTabExtraStyles(){
   if(document.getElementById('customtab-extra-styles')) return;
@@ -525,6 +681,9 @@ async function switchAppTab(tabId){
   closeColSettingsPopover();
   customSortState = { colId: null, dir: null };
   customSearchTerm = '';
+  genericStatsOpen = false;
+  const gsp0 = document.getElementById('genericStatsPanel');
+  if(gsp0) gsp0.style.display = 'none';
   activeAppTab = tabId;
   document.getElementById('app-tab-planning').style.display = tabId === 'planning' ? '' : 'none';
   document.getElementById('app-tab-custom').style.display = tabId === 'planning' ? 'none' : '';
@@ -574,8 +733,13 @@ function updateCustomToolbarForType(){
   document.getElementById('btnExportSuivi').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnConvertSuivi').style.display = isGeneric ? '' : 'none';
   ensureGenericToolbarButtons();
-  const genericBtnIds = ['btnGenericSaveTemplate','btnGenericExportExcel','btnGenericImportExcel'];
+  const genericBtnIds = ['btnGenericSaveTemplate','btnGenericExportExcel','btnGenericImportExcel','btnGenericStats'];
   genericBtnIds.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = isGeneric ? '' : 'none'; });
+  if(!isGeneric){
+    genericStatsOpen = false;
+    const gsp = document.getElementById('genericStatsPanel');
+    if(gsp) gsp.style.display = 'none';
+  }
 }
 /* --- Boutons de barre d'outils créés dynamiquement pour le tableau libre (modèle, import/export Excel) --- */
 const GENERIC_COLUMN_TEMPLATE_KEY = 'po:generic-column-template';
@@ -613,10 +777,18 @@ function ensureGenericToolbarButtons(){
   fileInput.style.display = 'none';
   toolbar.insertBefore(fileInput, btnImport.nextSibling);
 
+  const btnStats = document.createElement('button');
+  btnStats.type = 'button';
+  btnStats.className = 'btn';
+  btnStats.id = 'btnGenericStats';
+  btnStats.textContent = '📊 Statistiques par personne/mois';
+  toolbar.insertBefore(btnStats, fileInput.nextSibling);
+
   btnImport.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', handleGenericExcelImport);
   btnExport.addEventListener('click', handleGenericExcelExport);
   btnTemplate.addEventListener('click', handleSaveGenericColumnTemplate);
+  btnStats.addEventListener('click', toggleGenericStatsPanel);
 }
 function genericCellDisplayValue(col, val){
   const type = col.cellType || 'text';
@@ -986,6 +1158,7 @@ function renderCustomTable(){
     });
   });
   wireCustomTableNav(shell);
+  if(genericStatsOpen) renderGenericStatsPanel();
 }
 function wireCustomColumnReorder(shell, d){
   let dragColId = null;
