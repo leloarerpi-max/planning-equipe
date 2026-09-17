@@ -17,24 +17,182 @@ let customTabListenerRef = null;
 function defaultCustomTabData(){
   return {
     type: 'generic',
-    columns: [ {id:'c1', label:'Colonne 1', align:'left', color:null}, {id:'c2', label:'Colonne 2', align:'left', color:null} ],
+    columns: [ {id:'c1', label:'Colonne 1', align:'left', color:null, width:160}, {id:'c2', label:'Colonne 2', align:'left', color:null, width:160} ],
     rows: [ {id: cryptoId(), cells: {}} ]
   };
 }
-/* --- Personnalisation des colonnes (tableau libre) : couleur + alignement --- */
-function nextColAlign(a){ return a === 'left' ? 'center' : a === 'center' ? 'right' : 'left'; }
-function colAlignLabel(a){ return a === 'center' ? 'C' : a === 'right' ? 'D' : 'G'; }
-function colAlignTitle(a){
-  return a === 'center' ? 'Centré — cliquer pour aligner à droite'
-       : a === 'right' ? 'Aligné à droite — cliquer pour aligner à gauche'
-       : 'Aligné à gauche — cliquer pour centrer';
-}
+/* --- Personnalisation des colonnes (tableau libre) : couleur, alignement, largeur --- */
+const CUSTOM_COL_DEFAULT_WIDTH = 160;
 function colContrastColor(hex){
   if(!hex || hex.length !== 7) return null;
   const r = parseInt(hex.substr(1,2),16), g = parseInt(hex.substr(3,2),16), b = parseInt(hex.substr(5,2),16);
   if([r,g,b].some(isNaN)) return null;
   const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
   return lum > 0.6 ? '#242220' : '#ffffff';
+}
+function injectCustomTabExtraStyles(){
+  if(document.getElementById('customtab-extra-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'customtab-extra-styles';
+  style.textContent = `
+    table.custom-table{ table-layout:fixed; }
+    .custom-col-head{ position:relative; padding-right:4px; }
+    .custom-col-head .custom-col-input{ width:auto; }
+    .custom-col-gear{
+      flex-shrink:0; background:none; border:none; color:var(--ink-soft); opacity:.4;
+      cursor:pointer; font-size:13px; padding:2px 5px; border-radius:3px; line-height:1;
+    }
+    .custom-col-gear:hover{ opacity:1; color:var(--violet); background:rgba(91,75,138,.1); }
+    .custom-col-resize{
+      position:absolute; top:0; right:-4px; width:7px; height:100%; cursor:col-resize; z-index:3;
+    }
+    .custom-col-resize:hover, .custom-col-resize.resizing{ background:var(--violet); opacity:.35; }
+    .col-settings-popover{
+      position:fixed; z-index:200; background:#fff; border:1px solid var(--line-strong); border-radius:6px;
+      box-shadow:0 10px 28px rgba(0,0,0,.2); padding:14px; font-family:'IBM Plex Sans', sans-serif; font-size:12.5px;
+      min-width:200px; display:none;
+    }
+    .col-settings-popover.open{ display:block; }
+    .col-settings-title{ font-weight:700; font-size:12.5px; margin-bottom:10px; color:var(--ink); }
+    .col-settings-row{ display:flex; align-items:center; gap:8px; margin-bottom:11px; }
+    .col-settings-row:last-of-type{ margin-bottom:0; }
+    .col-settings-label{ color:var(--ink-soft); font-size:11.5px; width:64px; flex-shrink:0; }
+    .col-settings-popover input[type=color]{ width:32px; height:26px; padding:0; border:1px solid var(--line-strong); border-radius:4px; cursor:pointer; background:none; }
+    .col-align-group{ display:flex; gap:4px; flex:1; }
+    .col-align-btn{
+      flex:1; background:var(--paper); border:1px solid var(--line-strong); border-radius:4px; padding:6px 0;
+      cursor:pointer; font-size:13px; color:var(--ink-soft);
+    }
+    .col-align-btn.active{ background:var(--violet); border-color:var(--violet); color:#fff; }
+    .col-settings-clear{ background:none; border:none; color:var(--ink-soft); text-decoration:underline; cursor:pointer; font-size:11.5px; padding:0; }
+    .col-settings-delete{ width:100%; background:none; border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:7px 0; cursor:pointer; font-size:12px; margin-top:12px; }
+    .col-settings-delete:hover{ background:var(--danger); color:#fff; }
+  `;
+  document.head.appendChild(style);
+}
+function livePreviewColumnColor(colId, color){
+  const shell = document.getElementById('customTableShell');
+  if(!shell) return;
+  const txtColor = colContrastColor(color);
+  shell.querySelectorAll(`[data-colhead="${colId}"], [data-colcell="${colId}"]`).forEach(el => {
+    el.style.background = color || '';
+  });
+  shell.querySelectorAll(`input[data-colid="${colId}"]`).forEach(inp => {
+    inp.style.color = txtColor || '';
+  });
+}
+function closeColSettingsPopover(){
+  const p = document.getElementById('colSettingsPopover');
+  if(p) p.classList.remove('open');
+  document.removeEventListener('mousedown', handleOutsideColPopoverClick, true);
+}
+function handleOutsideColPopoverClick(e){
+  const p = document.getElementById('colSettingsPopover');
+  if(p && p.classList.contains('open') && !p.contains(e.target) && !e.target.closest('[data-colgear]')){
+    closeColSettingsPopover();
+  }
+}
+function openColSettingsPopover(colId, anchorBtn){
+  const d = activeCustomTabData;
+  const col = d.columns.find(c => c.id === colId);
+  if(!col) return;
+  let p = document.getElementById('colSettingsPopover');
+  if(!p){
+    p = document.createElement('div');
+    p.id = 'colSettingsPopover';
+    p.className = 'col-settings-popover';
+    document.body.appendChild(p);
+  }
+  const align = col.align || 'left';
+  p.innerHTML = `
+    <div class="col-settings-title">Réglages de la colonne</div>
+    <div class="col-settings-row">
+      <span class="col-settings-label">Couleur</span>
+      <input type="color" id="colSettingsColorInput" value="${col.color || '#ffffff'}" />
+      <button class="col-settings-clear" id="colSettingsClearColor">Aucune</button>
+    </div>
+    <div class="col-settings-row">
+      <span class="col-settings-label">Alignement</span>
+      <div class="col-align-group">
+        <button class="col-align-btn ${align==='left'?'active':''}" data-align="left" title="Aligner à gauche">⟵</button>
+        <button class="col-align-btn ${align==='center'?'active':''}" data-align="center" title="Centrer">≡</button>
+        <button class="col-align-btn ${align==='right'?'active':''}" data-align="right" title="Aligner à droite">⟶</button>
+      </div>
+    </div>
+    ${d.columns.length > 1 ? `<button class="col-settings-delete" id="colSettingsDelete">✕ Supprimer la colonne</button>` : ''}
+  `;
+  const rect = anchorBtn.getBoundingClientRect();
+  const popW = 220;
+  p.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - popW - 8)) + 'px';
+  p.style.top = (rect.bottom + 6) + 'px';
+  p.dataset.colid = colId;
+  p.classList.add('open');
+
+  p.querySelector('#colSettingsColorInput').addEventListener('input', (e) => {
+    col.color = e.target.value;
+    livePreviewColumnColor(colId, col.color);
+  });
+  p.querySelector('#colSettingsColorInput').addEventListener('change', async () => {
+    await persistCustomTab();
+  });
+  p.querySelector('#colSettingsClearColor').addEventListener('click', async () => {
+    col.color = null;
+    livePreviewColumnColor(colId, null);
+    p.querySelector('#colSettingsColorInput').value = '#ffffff';
+    await persistCustomTab();
+  });
+  p.querySelectorAll('.col-align-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      col.align = btn.dataset.align;
+      p.querySelectorAll('.col-align-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const shell = document.getElementById('customTableShell');
+      const align2 = col.align;
+      const txtColor = colContrastColor(col.color);
+      shell.querySelectorAll(`input[data-colid="${colId}"]`).forEach(inp => {
+        inp.style.textAlign = align2;
+      });
+      await persistCustomTab();
+    });
+  });
+  const delBtn = p.querySelector('#colSettingsDelete');
+  if(delBtn) delBtn.addEventListener('click', async () => {
+    d.columns = d.columns.filter(c => c.id !== colId);
+    closeColSettingsPopover();
+    renderCustomTable();
+    await persistCustomTab();
+  });
+
+  setTimeout(() => document.addEventListener('mousedown', handleOutsideColPopoverClick, true), 0);
+}
+function wireCustomColumnResize(shell, d){
+  shell.querySelectorAll('[data-colresize]').forEach(handle => {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const colId = handle.dataset.colresize;
+      const col = d.columns.find(c => c.id === colId);
+      if(!col) return;
+      const table = shell.querySelector('table.custom-table');
+      const colIndex = d.columns.findIndex(c => c.id === colId);
+      const colEl = table.querySelectorAll('colgroup col')[colIndex];
+      if(!colEl) return;
+      const startX = e.clientX;
+      const startWidth = colEl.getBoundingClientRect().width;
+      handle.classList.add('resizing');
+      function onMove(ev){
+        const newWidth = Math.max(60, Math.round(startWidth + (ev.clientX - startX)));
+        colEl.style.width = newWidth + 'px';
+      }
+      function onUp(){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('resizing');
+        col.width = parseInt(colEl.style.width, 10) || CUSTOM_COL_DEFAULT_WIDTH;
+        persistCustomTab();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
 }
 function defaultMealPlanningData(){
   return {
@@ -207,12 +365,14 @@ function normalizeMealDataOnLoad(d){
     d.columns.forEach(col => {
       if(col.align === undefined) col.align = 'left';
       if(col.color === undefined) col.color = null;
+      if(!col.width) col.width = CUSTOM_COL_DEFAULT_WIDTH;
     });
   }
   return d;
 }
 
 async function switchAppTab(tabId){
+  closeColSettingsPopover();
   activeAppTab = tabId;
   document.getElementById('app-tab-planning').style.display = tabId === 'planning' ? '' : 'none';
   document.getElementById('app-tab-custom').style.display = tabId === 'planning' ? 'none' : '';
@@ -312,18 +472,19 @@ function renderCustomTable(){
     shell.innerHTML = '<div class="empty-note">Aucune colonne. Ajoute-en une pour commencer.</div>';
     return;
   }
-  let html = '<table class="custom-table"><thead><tr>';
+  injectCustomTabExtraStyles();
+  let html = '<table class="custom-table"><colgroup>';
+  d.columns.forEach(col => { html += `<col style="width:${col.width || CUSTOM_COL_DEFAULT_WIDTH}px">`; });
+  html += '<col style="width:36px"></colgroup><thead><tr>';
   d.columns.forEach(col => {
     const align = col.align || 'left';
     const txtColor = colContrastColor(col.color);
     const thStyle = col.color ? `background:${col.color};` : '';
     const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
-    html += `<th style="${thStyle}"><div class="custom-col-head">
+    html += `<th style="${thStyle}" data-colhead="${col.id}"><div class="custom-col-head">
       <input type="text" value="${escapeHtml(col.label)}" data-colid="${col.id}" class="custom-col-input" style="${txtStyle}" />
-      <input type="color" class="custom-col-color" data-colcolor="${col.id}" value="${col.color || '#ffffff'}" title="Couleur de fond de la colonne" style="width:22px;height:22px;padding:0;border:1px solid var(--line-strong);border-radius:3px;cursor:pointer;flex-shrink:0;background:none;" />
-      <button class="custom-col-del" data-colclear="${col.id}" title="Retirer la couleur" style="opacity:${col.color ? '.6' : '.2'};">⌫</button>
-      <button class="custom-col-del" data-colalign="${col.id}" title="${colAlignTitle(align)}" style="opacity:.6; font-weight:800;">${colAlignLabel(align)}</button>
-      ${d.columns.length > 1 ? `<button class="custom-col-del" data-coldel="${col.id}" title="Supprimer la colonne">✕</button>` : ''}
+      <button class="custom-col-gear" data-colgear="${col.id}" title="Réglages de la colonne (couleur, alignement, suppression)">⚙</button>
+      <span class="custom-col-resize" data-colresize="${col.id}" title="Glisser pour redimensionner"></span>
     </div></th>`;
   });
   html += '<th style="width:36px;"></th></tr></thead><tbody>';
@@ -335,7 +496,7 @@ function renderCustomTable(){
       const txtColor = colContrastColor(col.color);
       const tdStyle = col.color ? `background:${col.color};` : '';
       const txtStyle = `text-align:${align};${txtColor ? `color:${txtColor};` : ''}`;
-      html += `<td class="custom-cell" style="${tdStyle}"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
+      html += `<td class="custom-cell" style="${tdStyle}" data-colcell="${col.id}"><input type="text" value="${escapeHtml(val)}" data-colid="${col.id}" style="${txtStyle}" /></td>`;
     });
     html += `<td class="custom-row-actions"><button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button></td></tr>`;
   });
@@ -350,40 +511,18 @@ function renderCustomTable(){
       await persistCustomTab();
     });
   });
-  shell.querySelectorAll('.custom-col-color').forEach(inp => {
-    inp.addEventListener('input', async () => {
-      const col = d.columns.find(c => c.id === inp.dataset.colcolor);
-      if(!col) return;
-      col.color = inp.value;
-      renderCustomTable();
-      await persistCustomTab();
+  shell.querySelectorAll('[data-colgear]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const p = document.getElementById('colSettingsPopover');
+      if(p && p.classList.contains('open') && p.dataset.colid === btn.dataset.colgear){
+        closeColSettingsPopover();
+        return;
+      }
+      openColSettingsPopover(btn.dataset.colgear, btn);
     });
   });
-  shell.querySelectorAll('[data-colclear]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const col = d.columns.find(c => c.id === btn.dataset.colclear);
-      if(!col) return;
-      col.color = null;
-      renderCustomTable();
-      await persistCustomTab();
-    });
-  });
-  shell.querySelectorAll('[data-colalign]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const col = d.columns.find(c => c.id === btn.dataset.colalign);
-      if(!col) return;
-      col.align = nextColAlign(col.align || 'left');
-      renderCustomTable();
-      await persistCustomTab();
-    });
-  });
-  shell.querySelectorAll('.custom-col-del[data-coldel]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      d.columns = d.columns.filter(c => c.id !== btn.dataset.coldel);
-      renderCustomTable();
-      await persistCustomTab();
-    });
-  });
+  wireCustomColumnResize(shell, d);
   shell.querySelectorAll('tr[data-rowid]').forEach(tr => {
     const rowId = tr.dataset.rowid;
     tr.querySelectorAll('td.custom-cell input').forEach(inp => {
@@ -700,7 +839,7 @@ document.getElementById('btnConvertMealPlanning').addEventListener('click', asyn
 });
 
 document.getElementById('btnAddColumn').addEventListener('click', async () => {
-  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne', align:'left', color:null});
+  activeCustomTabData.columns.push({id: cryptoId(), label: 'Nouvelle colonne', align:'left', color:null, width: CUSTOM_COL_DEFAULT_WIDTH});
   renderCustomTable();
   await persistCustomTab();
 });
