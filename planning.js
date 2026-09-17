@@ -468,7 +468,23 @@ function renderAll(){
   renderTable();
 }
 
-function taskRowHtml(t){
+/* Ordre d'affichage des couleurs dans le tableau : les lignes se regroupent
+   automatiquement selon cet ordre, quelle que soit leur position de création. */
+const PRIORITY_ORDER = ['rose', 'peche', 'bleu', ''];
+const PRIORITY_LABELS = {rose:'Rose', peche:'Pêche', bleu:'Bleu', '':'—'};
+function sortTasksByPriority(tasks){
+  return tasks
+    .map((t, idx) => ({t, idx})) // garde l'ordre d'origine à l'intérieur d'un même groupe (tri stable)
+    .sort((a, b) => {
+      const oa = PRIORITY_ORDER.indexOf(a.t.priority || '');
+      const ob = PRIORITY_ORDER.indexOf(b.t.priority || '');
+      if(oa !== ob) return oa - ob;
+      return a.idx - b.idx;
+    })
+    .map(x => x.t);
+}
+
+function taskRowHtml(t, isGroupStart){
   const editable = isDayEditable();
   const dis = editable ? '' : 'disabled';
   const stCls = t.status === 'fait' ? 'st-fait' : (t.status === 'afaire' ? 'st-afaire' : 'st-empty');
@@ -515,8 +531,14 @@ function taskRowHtml(t){
     </select></td>
     <td class="obj-cell"><input class="obj-input" type="number" min="0" value="${t.objectif===''?'':t.objectif}" data-field="objectif" placeholder="—" ${dis} /></td>`;
 
-  return `<tr class="task-row ${rowCls}" data-task="${t.id}">
+  return `<tr class="task-row ${rowCls}${isGroupStart ? ' group-start' : ''}" data-task="${t.id}">
     <td class="task-name"><input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} /></td>
+    <td class="obj-cell" style="width:64px;"><select class="priority-select ${prCls}" data-field="priority" ${dis}>
+      <option value="" ${t.priority===''?'selected':''}>—</option>
+      <option value="rose" ${t.priority==='rose'?'selected':''}>Rose</option>
+      <option value="peche" ${t.priority==='peche'?'selected':''}>Pêche</option>
+      <option value="bleu" ${t.priority==='bleu'?'selected':''}>Bleu</option>
+    </select></td>
     ${peopleCells}
     ${statusNombreCells}
     <td>${(editable && isAdmin) ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
@@ -544,13 +566,18 @@ function renderTable(){
     return;
   }
   const f = currentFilters();
-  const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
+  const visible = sortTasksByPriority(dayData.tasks.filter(t => taskMatchesFilters(t, f)));
 
   if(!visible.length){
     shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
   } else {
-    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
-    visible.forEach(t => { html += taskRowHtml(t); });
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Couleur</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
+    let prevPriority = null;
+    visible.forEach((t, i) => {
+      const isGroupStart = i > 0 && (t.priority || '') !== prevPriority;
+      prevPriority = t.priority || '';
+      html += taskRowHtml(t, isGroupStart);
+    });
     html += '</tbody></table>';
     shell.innerHTML = html;
 
@@ -628,9 +655,7 @@ async function onFieldChange(id, el){
     }
   }
   if(field === 'priority'){
-    el.className = 'priority-select ' + (val ? 'pr-'+val : 'pr-empty');
-    const row = el.closest('tr.task-row');
-    if(row) row.className = 'task-row ' + (val ? 'row-'+val : 'row-empty');
+    renderTable();
   }
   await syncTask(id);
   if(statusChanged) updateStatusSelectInPlace(id, task.status);
@@ -895,11 +920,21 @@ async function addTask(){
   if(!isDayEditable()){ alert('Ce jour est archivé (lecture seule).'); return; }
   const name = prompt('Nom de la tâche :');
   if(!name || !name.trim()) return;
-  const newTask = {id: cryptoId(), name: name.trim(), personIds: [], status: '', priority: '', objectif: '', multiMode: false};
+  let priority = '';
+  const colorInput = prompt('Couleur (rose / peche / bleu), ou laisse vide pour aucune :');
+  if(colorInput){
+    const norm = colorInput.trim().toLowerCase();
+    if(['rose','peche','pêche','bleu'].includes(norm)){
+      priority = norm === 'pêche' ? 'peche' : norm;
+    } else {
+      alert('Couleur non reconnue, la tâche est créée sans couleur. Tu pourras la choisir dans le tableau via le menu "Couleur".');
+    }
+  }
+  const newTask = {id: cryptoId(), name: name.trim(), personIds: [], status: '', priority, objectif: '', multiMode: false};
   dayData.tasks.push(newTask);
   renderTable();
   await syncTask(newTask.id);
-  logChange(`a ajouté la tâche « ${newTask.name} »`);
+  logChange(`a ajouté la tâche « ${newTask.name} »${priority ? ' (' + PRIORITY_LABELS[priority] + ')' : ''}`);
 }
 async function addPerson(){
   const name = prompt('Nom de la personne à ajouter :');
