@@ -87,6 +87,7 @@ async function loadDayData(date, opts){
     d = await storageGet(dayKey(date));
   }
   if(!d || !d.tasks) d = {tasks: []};
+  if(!d.urgences) d.urgences = {};
   dayCache[date] = d;
   return d;
 }
@@ -160,6 +161,7 @@ function attachDayListener(date){
     let fresh;
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
     if(!fresh || !fresh.tasks) return;
+    if(!fresh.urgences) fresh.urgences = {};
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
     if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt someone mid-typing
@@ -217,7 +219,7 @@ async function init(){
       const tasks = defaultTasksForDay(byName);
       daysIndex = [today];
       currentDate = today;
-      dayData = {tasks};
+      dayData = {tasks, urgences: {}};
       setDayCache(today, dayData);
       await storageSet(dayKey(today), dayData);
       await storageSet(INDEX_KEY, daysIndex);
@@ -238,7 +240,7 @@ async function init(){
       const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
       daysIndex.push(today);
       daysIndex.sort();
-      dayData = {tasks: clonedTasks};
+      dayData = {tasks: clonedTasks, urgences: {}};
       setDayCache(today, dayData);
       await storageSet(dayKey(today), dayData);
       await storageSet(INDEX_KEY, daysIndex);
@@ -288,7 +290,7 @@ async function syncTask(taskId){
   const localIds = new Set(localTasks.map(t => t.id));
   const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
   const mergedTasks = [...localTasks, ...extraFromServer];
-  const merged = {tasks: mergedTasks};
+  const merged = {tasks: mergedTasks, urgences: dayData.urgences || {}};
   // Only force a full re-render if we actually pulled in something new
   // from someone else — otherwise a rebuild here would steal focus
   // mid-typing/navigation.
@@ -315,7 +317,32 @@ async function syncTaskRemoval(taskId){
   const localTasks = dayData.tasks.filter(t => t.id !== taskId);
   const localIds = new Set(localTasks.map(t => t.id));
   const extraFromServer = serverDay.tasks.filter(t => t.id !== taskId && !localIds.has(t.id));
-  const merged = {tasks: [...localTasks, ...extraFromServer]};
+  const merged = {tasks: [...localTasks, ...extraFromServer], urgences: dayData.urgences || {}};
+  const needsRerender = extraFromServer.length > 0;
+  dayData = merged;
+  setDayCache(currentDate, dayData);
+  const ok = await storageSet(dayKey(currentDate), merged);
+  if(ok){
+    if(needsRerender) renderTable();
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+
+// Enregistre la saisie d'urgences du jour (par personne), en préservant les
+// tâches telles qu'elles sont sur le serveur au moment de l'écriture, sur le
+// même principe de fusion que syncTask().
+async function syncUrgences(){
+  setStatus('Enregistrement…', 'saving');
+  let serverDay = await storageGet(dayKey(currentDate));
+  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
+  const localTasks = dayData.tasks;
+  const localIds = new Set(localTasks.map(t => t.id));
+  const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
+  const mergedTasks = [...localTasks, ...extraFromServer];
+  const merged = {tasks: mergedTasks, urgences: dayData.urgences || {}};
   const needsRerender = extraFromServer.length > 0;
   dayData = merged;
   setDayCache(currentDate, dayData);
@@ -546,9 +573,52 @@ function taskRowHtml(t, isGroupStart){
   </tr>`;
 }
 
+function renderUrgencesPanel(){
+  const panel = document.getElementById('urgencesPanel');
+  const inputsBox = document.getElementById('urgencesInputs');
+  if(!panel || !inputsBox) return;
+  if(!people.length){ panel.style.display = 'none'; return; }
+  const editable = isDayEditable();
+  panel.style.display = 'block';
+  const urg = dayData.urgences || {};
+  let total = 0;
+  const rows = people.map(p => {
+    const raw = urg[p.id];
+    const val = (raw === undefined || raw === null || raw === '') ? '' : raw;
+    if(val !== '') total += Number(val) || 0;
+    const c = personColor(p.id);
+    const dot = c ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:6px;flex-shrink:0;"></i>` : '';
+    return `<div class="urgence-input-row">
+      <span class="urg-name">${dot}${escapeHtml(p.name)}</span>
+      <input type="number" min="0" data-person="${p.id}" value="${val}" placeholder="0" ${editable?'':'disabled'} />
+    </div>`;
+  }).join('');
+  inputsBox.innerHTML = rows + `<div class="urgence-input-row urgence-total-row"><span class="urg-name">Total du jour</span><span class="urg-total-value">${total}</span></div>`;
+  inputsBox.querySelectorAll('input[data-person]').forEach(inp => {
+    inp.addEventListener('change', () => onUrgenceInputChange(inp.dataset.person, inp.value));
+    inp.addEventListener('focus', () => inp.select());
+  });
+}
+
+async function onUrgenceInputChange(personId, value){
+  if(!isDayEditable()) return;
+  dayData.urgences = dayData.urgences || {};
+  if(value === ''){
+    delete dayData.urgences[personId];
+  } else {
+    dayData.urgences[personId] = Math.max(0, Number(value) || 0);
+  }
+  renderUrgencesPanel();
+  await syncUrgences();
+  const pname = personNameById(personId) || '?';
+  const shown = dayData.urgences[personId];
+  logChange(`a saisi ${shown === undefined ? '(vide)' : shown} urgence(s) pour ${pname} (${toFr(currentDate)})`);
+}
+
 function renderTable(){
   const shell = document.getElementById('tableShell');
   const editable = isDayEditable();
+  renderUrgencesPanel();
 
   const btnAddTask = document.getElementById('btnAddTask');
   const btnClearDay = document.getElementById('btnClearDay');
@@ -1053,8 +1123,7 @@ async function computeAndRenderStats(){
   const echangesClientNames = (TASK_CATEGORIES.find(c => c.label === 'ECHANGES CLTS') || {tasks:[]}).tasks.map(normTaskName);
   const monthlyEchanges = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }
 
-  const urgencesNames = (TASK_CATEGORIES.find(c => c.label === 'URGENCES') || {tasks:[]}).tasks.map(normTaskName);
-  const monthlyUrgences = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }
+  const monthlyUrgences = {}; // monthKey (YYYY-MM) -> { personId: sommeCumulée }, saisie directe par jour (dayData.urgences)
 
   allDaysWithDate.forEach(({date, data}) => {
     const monthKey = date.slice(0,7);
@@ -1079,17 +1148,16 @@ async function computeAndRenderStats(){
           monthlyEchanges[monthKey][pid] = (monthlyEchanges[monthKey][pid] || 0) + share;
         });
       }
-      if(urgencesNames.includes(normTaskName(t.name))){
-        const ids = t.personIds || [];
-        if(!ids.length) return;
-        const share = (Number(t.objectif) || 0) / ids.length;
-        ids.forEach(pid => {
-          if(!people.some(p => p.id === pid)) return; // person no longer exists
-          monthlyUrgences[monthKey] = monthlyUrgences[monthKey] || {};
-          monthlyUrgences[monthKey][pid] = (monthlyUrgences[monthKey][pid] || 0) + share;
-        });
-      }
     });
+    if(data.urgences){
+      Object.keys(data.urgences).forEach(pid => {
+        if(!people.some(p => p.id === pid)) return; // person no longer exists
+        const val = Number(data.urgences[pid]) || 0;
+        if(!val) return;
+        monthlyUrgences[monthKey] = monthlyUrgences[monthKey] || {};
+        monthlyUrgences[monthKey][pid] = (monthlyUrgences[monthKey][pid] || 0) + val;
+      });
+    }
   });
 
   loading.style.display = 'none';
