@@ -164,7 +164,7 @@ function attachDayListener(date){
     if(!fresh.urgences) fresh.urgences = {};
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
-    if(active && active.tagName === 'INPUT' && active.type === 'text') return; // don't disrupt someone mid-typing
+    if(active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) return; // don't disrupt someone mid-typing
     if(JSON.stringify(fresh) === JSON.stringify(dayData)) return;
     dayData = fresh;
     setDayCache(date, dayData);
@@ -196,7 +196,7 @@ function attachPeopleListener(){
     if(!fresh || !Array.isArray(fresh)) return;
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
-    if(active && active.tagName === 'INPUT' && active.type === 'text') return;
+    if(active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) return;
     if(JSON.stringify(fresh) === JSON.stringify(people)) return;
     people = fresh;
     renderFilterOptions();
@@ -439,7 +439,7 @@ async function createNewDay(){
   daysIndex.push(iso);
   daysIndex.sort();
   currentDate = iso;
-  dayData = {tasks: clonedTasks};
+  dayData = {tasks: clonedTasks, urgences: {}};
   setDayCache(currentDate, dayData);
   attachDayListener(currentDate);
   await persistIndex();
