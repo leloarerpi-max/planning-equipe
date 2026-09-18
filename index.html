@@ -432,6 +432,21 @@
   .empty-note{ padding:24px; color:var(--ink-soft); font-size:13.5px; }
   footer{ margin-top:26px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:12px; }
 
+  .urgence-input-row{
+    display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line-strong);
+    border-radius:var(--radius); padding:8px 12px;
+  }
+  .urgence-input-row .urg-name{ font-size:13px; font-weight:600; color:var(--ink); display:flex; align-items:center; white-space:nowrap; }
+  .urgence-input-row input{
+    width:56px; text-align:center; border:1px solid var(--line-strong); border-radius:2px; padding:5px 4px;
+    font-family:inherit; font-size:13px; background:var(--paper); color:var(--ink);
+  }
+  .urgence-input-row input:focus{ outline:1px solid var(--violet); }
+  .urgence-input-row input:disabled{ opacity:.45; cursor:not-allowed; }
+  .urgence-input-row.urgence-total-row{ background:var(--panel); border-color:var(--ink); }
+  .urgence-input-row.urgence-total-row .urg-name{ font-weight:800; }
+  .urgence-input-row .urg-total-value{ width:56px; text-align:center; font-weight:800; color:var(--ink); }
+
   @media (max-width:520px){
     .wrap{ padding:20px 10px 50px; }
     td.task-name{ max-width:140px; }
@@ -454,6 +469,12 @@
 
   <div class="archive-banner" id="archiveBanner" style="display:none;">
     🔒 Ce n'est pas la date du jour — lecture seule. Seul le superviseur peut le modifier.
+  </div>
+
+  <div class="summary" id="urgencesPanel" style="display:none;">
+    <h2>🚨 Urgences du jour</h2>
+    <p class="hint">Indique ici, jour par jour, le nombre d'urgences traitées par chacun. Chaque saisie s'additionne automatiquement au total du mois dans les statistiques, sans passer par une tâche partagée.</p>
+    <div id="urgencesInputs" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
   </div>
 
   <div class="table-shell" id="tableShell">
@@ -522,7 +543,7 @@
     <div class="table-shell" id="statsEchangesShell" style="overflow:auto; max-height:460px;"></div>
 
     <h2 style="margin-top:28px;">Urgences par personne et par mois</h2>
-    <p class="hint">Le chiffre saisi dans "Nombre" sur les tâches Urgences (ex "Cloches"), partagé entre les personnes assignées quand elles sont plusieurs sur la même tâche.</p>
+    <p class="hint">Basé sur la saisie quotidienne du bloc « 🚨 Urgences du jour » (au-dessus du tableau des tâches) : chacun indique son propre nombre d'urgences traitées chaque jour, additionné automatiquement sur le mois.</p>
     <div class="table-shell" id="statsUrgencesShell" style="overflow:auto; max-height:460px;"></div>
   </div>
 
