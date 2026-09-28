@@ -74,6 +74,27 @@ function expectedStatusForObjectif(val){
   return Number(val) === 0 ? 'fait' : 'afaire';
 }
 
+// Objectif par personne : propre à chaque jour (dayData.targets), pour ne pas
+// modifier l'historique. Pour les anciens jours sans valeur enregistrée, on
+// retombe sur l'ancienne valeur globale (p.objectif), qui n'est plus modifiée.
+function targetForPerson(p){
+  if(dayData && dayData.targets && p.id in dayData.targets) return dayData.targets[p.id];
+  return (p.objectif === '' || p.objectif == null) ? '' : Number(p.objectif);
+}
+function targetsSnapshotFrom(dayObj){
+  const t = {};
+  people.forEach(p => {
+    let v;
+    if(dayObj && dayObj.targets && p.id in dayObj.targets) v = dayObj.targets[p.id];
+    else v = p.objectif;
+    if(v !== '' && v != null) t[p.id] = Number(v);
+  });
+  return t;
+}
+function dayExtras(){
+  return {urgences: dayData.urgences || {}, targets: dayData.targets || {}};
+}
+
 async function loadDayData(date, opts){
   opts = opts || {};
   if(!opts.force && dayCache[date]) return dayCache[date];
@@ -88,6 +109,7 @@ async function loadDayData(date, opts){
   }
   if(!d || !d.tasks) d = {tasks: []};
   if(!d.urgences) d.urgences = {};
+  if(!d.targets) d.targets = {};
   dayCache[date] = d;
   return d;
 }
@@ -162,6 +184,7 @@ function attachDayListener(date){
     try{ fresh = JSON.parse(snap.val()); } catch(e){ return; }
     if(!fresh || !fresh.tasks) return;
     if(!fresh.urgences) fresh.urgences = {};
+    if(!fresh.targets) fresh.targets = {};
     const active = document.activeElement;
     const shell = document.getElementById('tableShell');
     if(active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) return; // don't disrupt someone mid-typing
@@ -219,7 +242,7 @@ async function init(){
       const tasks = defaultTasksForDay(byName);
       daysIndex = [today];
       currentDate = today;
-      dayData = {tasks, urgences: {}};
+      dayData = {tasks, urgences: {}, targets: targetsSnapshotFrom(null)};
       setDayCache(today, dayData);
       await storageSet(dayKey(today), dayData);
       await storageSet(INDEX_KEY, daysIndex);
@@ -240,7 +263,7 @@ async function init(){
       const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
       daysIndex.push(today);
       daysIndex.sort();
-      dayData = {tasks: clonedTasks, urgences: {}};
+      dayData = {tasks: clonedTasks, urgences: {}, targets: targetsSnapshotFrom(latestData)};
       setDayCache(today, dayData);
       await storageSet(dayKey(today), dayData);
       await storageSet(INDEX_KEY, daysIndex);
@@ -290,7 +313,7 @@ async function syncTask(taskId){
   const localIds = new Set(localTasks.map(t => t.id));
   const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
   const mergedTasks = [...localTasks, ...extraFromServer];
-  const merged = {tasks: mergedTasks, urgences: dayData.urgences || {}};
+  const merged = {tasks: mergedTasks, ...dayExtras()};
   // Only force a full re-render if we actually pulled in something new
   // from someone else — otherwise a rebuild here would steal focus
   // mid-typing/navigation.
@@ -317,7 +340,7 @@ async function syncTaskRemoval(taskId){
   const localTasks = dayData.tasks.filter(t => t.id !== taskId);
   const localIds = new Set(localTasks.map(t => t.id));
   const extraFromServer = serverDay.tasks.filter(t => t.id !== taskId && !localIds.has(t.id));
-  const merged = {tasks: [...localTasks, ...extraFromServer], urgences: dayData.urgences || {}};
+  const merged = {tasks: [...localTasks, ...extraFromServer], ...dayExtras()};
   const needsRerender = extraFromServer.length > 0;
   dayData = merged;
   setDayCache(currentDate, dayData);
@@ -342,7 +365,7 @@ async function syncUrgences(){
   const localIds = new Set(localTasks.map(t => t.id));
   const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
   const mergedTasks = [...localTasks, ...extraFromServer];
-  const merged = {tasks: mergedTasks, urgences: dayData.urgences || {}};
+  const merged = {tasks: mergedTasks, ...dayExtras()};
   const needsRerender = extraFromServer.length > 0;
   dayData = merged;
   setDayCache(currentDate, dayData);
@@ -439,7 +462,7 @@ async function createNewDay(){
   daysIndex.push(iso);
   daysIndex.sort();
   currentDate = iso;
-  dayData = {tasks: clonedTasks, urgences: {}};
+  dayData = {tasks: clonedTasks, urgences: {}, targets: targetsSnapshotFrom(dayData)};
   setDayCache(currentDate, dayData);
   attachDayListener(currentDate);
   await persistIndex();
@@ -911,7 +934,7 @@ function renderSummary(){
   }
 
   const byPerson = {};
-  people.forEach(p => byPerson[p.id] = {id:p.id, name:p.name, assigned:0, done:0, target: (p.objectif===''||p.objectif==null)?'':Number(p.objectif), color:personColor(p.id)});
+  people.forEach(p => byPerson[p.id] = {id:p.id, name:p.name, assigned:0, done:0, target: targetForPerson(p), color:personColor(p.id)});
   visible.forEach(t => {
     const n = t.personIds.length || 0;
     if(n === 0) return;
@@ -946,8 +969,10 @@ function renderSummary(){
     inp.addEventListener('change', async () => {
       const p = people.find(x => x.id === inp.dataset.person);
       if(!p) return;
-      p.objectif = inp.value === '' ? '' : Math.max(0, Number(inp.value));
-      await persistPeople();
+      dayData.targets = dayData.targets || {};
+      // '' = objectif vidé pour ce jour (masque aussi l'ancienne valeur globale)
+      dayData.targets[p.id] = inp.value === '' ? '' : Math.max(0, Number(inp.value));
+      await syncUrgences(); // fusionne avec les tâches du serveur puis enregistre (urgences + objectifs)
       updatePersonBarRowInPlace(p.id);
     });
   });
@@ -959,7 +984,7 @@ function updatePersonBarRowInPlace(personId){
   const p = people.find(x => x.id === personId);
   const stats = lastByPersonStats[personId];
   if(!p || !stats) return;
-  const target = (p.objectif===''||p.objectif==null) ? '' : Number(p.objectif);
+  const target = targetForPerson(p);
   stats.target = target;
   const hasTarget = target !== '' && target > 0;
   const p2 = hasTarget ? Math.min(100, Math.round(stats.done/target*100)) : 0;
