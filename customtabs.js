@@ -500,7 +500,7 @@ function wireCustomColumnResize(shell, d){
 function defaultMealPlanningData(){
   return {
     type: 'mealplanning',
-    people: ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name: n})),
+    people: ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs','Julia'].map(n => ({id: cryptoId(), name: n})),
     days: []
     // shifts key: dayId + '|' + personId -> free text value (e.g. "12h", "13h", anything)
   };
@@ -596,7 +596,7 @@ function defaultSuiviData(){
 function defaultPhonePlanningData(){
   return {
     type: 'phoneplanning',
-    people: ['Clara','Charlotte','Ben','Anaïs'].map(n => ({id: cryptoId(), name: n})),
+    people: ['Clara','Charlotte','Ben','Anaïs','Julia'].map(n => ({id: cryptoId(), name: n})),
     slots: ['09h-10h','10h-11h','11h-12h','12h-13h','13h-14h','14h-15h','15h-16h','16h-17h'].map(l => ({id: cryptoId(), label: l})),
     days: [],
     shifts: {}
@@ -609,7 +609,8 @@ function phonePersonColorByName(d, name){
 }
 
 async function initCustomTabs(){
-  customTabs = await storageGet(CUSTOMTABS_INDEX_KEY);
+  try{ customTabs = await storageGetStrict(CUSTOMTABS_INDEX_KEY); }
+  catch(e){ customTabs = null; setStatus('Connexion impossible — onglets non chargés, recharge la page', 'error'); return; } // surtout ne rien écraser
   if(!customTabs || !customTabs.length){
     customTabs = [
       {id: cryptoId(), name: 'Dossiers'},
@@ -694,7 +695,11 @@ async function switchAppTab(tabId){
   const tabMeta = customTabs.find(t => t.id === tabId);
   document.getElementById('customTabTitle').textContent = tabMeta ? tabMeta.name : 'Onglet';
   document.getElementById('customTableShell').innerHTML = '<div class="empty-note">Chargement…</div>';
-  activeCustomTabData = await storageGet(customTabKey(tabId));
+  try{ activeCustomTabData = await storageGetStrict(customTabKey(tabId)); }
+  catch(e){
+    document.getElementById('customTableShell').innerHTML = '<div class="empty-note">Connexion impossible : rien n\u2019a été modifié. Recharge la page.</div>';
+    activeCustomTabData = null; return;
+  }
   if(!activeCustomTabData || (!activeCustomTabData.columns && !activeCustomTabData.people && !activeCustomTabData.rows && !activeCustomTabData.slots && !activeCustomTabData.days)){
     activeCustomTabData = defaultCustomTabData();
   }
@@ -2207,3 +2212,70 @@ document.getElementById('btnExportSuivi').addEventListener('click', () => {
 });
 
 initCustomTabs();
+
+
+/* ==========================================================================
+   Ajouter une gestionnaire PARTOUT (Planning + tous les onglets qui ont une
+   équipe : repas / permanence téléphone). Réservé au superviseur.
+   - Chaque écriture est une transaction Firebase : on ne perd pas les saisies
+     des collègues et un doublon (même prénom) est ignoré.
+   - Si une lecture échoue, on s'arrête pour cet élément sans rien écrire.
+   ========================================================================== */
+async function addPersonEverywhere(){
+  if(!isAdmin){
+    alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe.");
+    return;
+  }
+  const raw = prompt("Prénom de la gestionnaire à ajouter PARTOUT (Planning + tous les onglets avec une équipe) :", 'Julia');
+  if(!raw || !raw.trim()) return;
+  const name = raw.trim();
+  const same = p => (p && p.name || '').trim().toLowerCase() === name.toLowerCase();
+  if(!confirm(`Ajouter « ${name} » dans le Planning et dans tous les onglets repas / permanence téléphone ?`)) return;
+
+  const report = [];
+  setStatus('Ajout en cours…', 'saving');
+
+  // 1) Planning & Objectif
+  try{
+    const pre = await storageGetStrict(PEOPLE_KEY);
+    if(!Array.isArray(pre)) throw new Error('liste du Planning introuvable');
+    const newP = {id: cryptoId(), name, objectif: ''};
+    const res = await storageTransaction(PEOPLE_KEY, cur => {
+      const base = Array.isArray(cur) ? cur : pre; // si le cache est vide, Firebase rejoue avec la vraie valeur
+      if(base.some(same)) return undefined;
+      return [...base, newP];
+    });
+    report.push(`Planning : ${res.committed ? 'ajoutée ✔' : 'déjà présente'}`);
+  } catch(e){
+    report.push(`Planning : ÉCHEC (${e && e.message || e}) — rien modifié`);
+  }
+
+  // 2) Onglets personnalisés
+  let tabs = [];
+  try{ tabs = (await storageGetStrict(CUSTOMTABS_INDEX_KEY)) || []; }
+  catch(e){ report.push(`Liste des onglets : ÉCHEC (${e && e.message || e})`); }
+  for(const t of tabs){
+    try{
+      const pre = await storageGetStrict(customTabKey(t.id));
+      if(!pre || !Array.isArray(pre.people) || !(pre.type === 'mealplanning' || pre.type === 'phoneplanning')){
+        report.push(`« ${t.name} » : pas d'équipe dans cet onglet (rien à faire)`);
+        continue;
+      }
+      const newP = {id: cryptoId(), name};
+      const res = await storageTransaction(customTabKey(t.id), cur => {
+        const base = (cur && Array.isArray(cur.people)) ? cur : pre;
+        if(base.people.some(same)) return undefined;
+        return {...base, people: [...base.people, newP]};
+      });
+      report.push(`« ${t.name} » : ${res.committed ? 'ajoutée ✔' : 'déjà présente'}`);
+    } catch(e){
+      report.push(`« ${t.name} » : ÉCHEC (${e && e.message || e}) — rien modifié`);
+    }
+  }
+
+  setStatus('', '');
+  logChange(`a ajouté ${name} dans le Planning et dans les onglets avec une équipe`);
+  alert(report.join('\n'));
+}
+const btnAddPersonEverywhere = document.getElementById('btnAddPersonEverywhere');
+if(btnAddPersonEverywhere) btnAddPersonEverywhere.addEventListener('click', addPersonEverywhere);
