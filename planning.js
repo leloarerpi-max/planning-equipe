@@ -95,28 +95,68 @@ function dayExtras(){
   return {urgences: dayData.urgences || {}, targets: dayData.targets || {}};
 }
 
+const dayBase = {}; // dernière version connue du serveur, par jour (copie profonde) — sert de base à la fusion
+function setDayCache(date, data){
+  dayCache[date] = data;
+  try{ dayBase[date] = JSON.parse(JSON.stringify(data)); } catch(e){}
+}
+let syncInFlight = 0;
+let deferredDay = null; // mise à jour reçue pendant une saisie, appliquée dès que le champ perd le focus
+function isTypingNow(){
+  const a = document.activeElement;
+  return !!(a && a.tagName === 'INPUT' && (a.type === 'text' || a.type === 'number'));
+}
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    if(deferredDay && !isTypingNow() && syncInFlight === 0){
+      const fresh = deferredDay; deferredDay = null;
+      if(fresh.date === currentDate && JSON.stringify(fresh.data) !== JSON.stringify(dayData)){
+        dayData = fresh.data; setDayCache(currentDate, dayData); renderTable();
+      }
+    }
+  }, 0);
+});
+// Fusionne UNE tâche locale dans la version serveur, champ par champ.
+// base = ce que nous savions du serveur avant notre modification ; seuls les champs
+// que NOUS avons changés sont appliqués, les changements des collègues sont conservés.
+function mergeTaskIntoServer(serverTasks, localTask, baseTask){
+  const idx = serverTasks.findIndex(t => t.id === localTask.id);
+  if(idx < 0){ serverTasks.push(JSON.parse(JSON.stringify(localTask))); return; }
+  const srv = serverTasks[idx];
+  if(!baseTask){ serverTasks[idx] = JSON.parse(JSON.stringify(localTask)); return; }
+  const out = {...srv};
+  Object.keys(localTask).forEach(k => {
+    if(k === 'personIds') return;
+    if(JSON.stringify(localTask[k]) !== JSON.stringify(baseTask[k])) out[k] = localTask[k];
+  });
+  const lp = localTask.personIds || [], bp = baseTask.personIds || [], sp = srv.personIds || [];
+  if(JSON.stringify(lp) !== JSON.stringify(bp)){
+    if(JSON.stringify(sp) === JSON.stringify(bp)){ out.personIds = [...lp]; } // personne d'autre n'y a touché : on garde l'ordre exact (Personne / Aide / Aide 2)
+    else {
+      const added = lp.filter(x => !bp.includes(x)), removed = bp.filter(x => !lp.includes(x));
+      out.personIds = sp.filter(x => !removed.includes(x)).concat(added.filter(x => !sp.includes(x)));
+    }
+  } else out.personIds = sp;
+  serverTasks[idx] = out;
+}
+
 async function loadDayData(date, opts){
   opts = opts || {};
   if(!opts.force && dayCache[date]) return dayCache[date];
-  let d = await storageGet(dayKey(date));
+  let d = await storageGetStrict(dayKey(date)); // lève une exception en cas d'erreur réseau
   if(!d || !d.tasks){
     await new Promise(r => setTimeout(r, 350));
-    d = await storageGet(dayKey(date));
-  }
-  if(!d || !d.tasks){
-    await new Promise(r => setTimeout(r, 900));
-    d = await storageGet(dayKey(date));
+    d = await storageGetStrict(dayKey(date));
   }
   if(!d || !d.tasks) d = {tasks: []};
   if(!d.urgences) d.urgences = {};
   if(!d.targets) d.targets = {};
-  dayCache[date] = d;
+  setDayCache(date, d);
   return d;
 }
-function setDayCache(date, data){ dayCache[date] = data; }
 
 function defaultPeople(){
-  return ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs'].map(n => ({id: cryptoId(), name:n, objectif: ''}));
+  return ['Régis','Ben','Clara','Charlotte','Pierrick','Anaïs','Julia'].map(n => ({id: cryptoId(), name:n, objectif: ''}));
 }
 
 function defaultTasksForDay(byName){
@@ -185,10 +225,10 @@ function attachDayListener(date){
     if(!fresh || !fresh.tasks) return;
     if(!fresh.urgences) fresh.urgences = {};
     if(!fresh.targets) fresh.targets = {};
-    const active = document.activeElement;
-    const shell = document.getElementById('tableShell');
-    if(active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) return; // don't disrupt someone mid-typing
-    if(JSON.stringify(fresh) === JSON.stringify(dayData)) return;
+    if(date !== currentDate) return;
+    if(JSON.stringify(fresh) === JSON.stringify(dayData)) { deferredDay = null; return; }
+    if(isTypingNow() || syncInFlight > 0){ deferredDay = {date, data: fresh}; return; } // on la garde pour plus tard au lieu de la perdre
+    deferredDay = null;
     dayData = fresh;
     setDayCache(date, dayData);
     renderTable();
@@ -230,25 +270,27 @@ function attachPeopleListener(){
 async function init(){
   try{
     ensureMyName();
-    people = await storageGet(PEOPLE_KEY);
-    if(!people){ people = defaultPeople(); await storageSet(PEOPLE_KEY, people); }
+    // Lectures STRICTES : une erreur réseau lève une exception (écran « Réessayer ») au lieu d'être prise pour « rien n'existe ».
+    people = await storageGetStrict(PEOPLE_KEY);
+    if(!people){
+      // Création des personnes par défaut UNIQUEMENT si elles n'existent vraiment pas (transaction atomique)
+      const res = await storageTransaction(PEOPLE_KEY, cur => (cur && cur.length) ? undefined : defaultPeople());
+      people = res.value || await storageGetStrict(PEOPLE_KEY);
+      if(!people) throw new Error("liste de l'équipe introuvable");
+    }
 
-    daysIndex = await storageGet(INDEX_KEY);
+    daysIndex = await storageGetStrict(INDEX_KEY);
     const today = todayIso();
 
     if(!daysIndex || !daysIndex.length){
-      // Very first run ever: seed with today's date, not a hardcoded one.
+      // Tout premier lancement : on crée la journée du jour si elle n'existe pas déjà
       const byName = {}; people.forEach(p => byName[p.name] = p.id);
-      const tasks = defaultTasksForDay(byName);
-      daysIndex = [today];
+      await storageTransaction(dayKey(today), cur => cur ? undefined : {tasks: defaultTasksForDay(byName), urgences: {}, targets: targetsSnapshotFrom(null)});
+      const idxRes = await storageTransaction(INDEX_KEY, cur => { const a = Array.isArray(cur) ? cur : []; if(!a.includes(today)) a.push(today); return a.sort(); });
+      daysIndex = idxRes.value;
       currentDate = today;
-      dayData = {tasks, urgences: {}, targets: targetsSnapshotFrom(null)};
-      setDayCache(today, dayData);
-      await storageSet(dayKey(today), dayData);
-      await storageSet(INDEX_KEY, daysIndex);
-      attachDayListener(currentDate);
-      attachIndexListener();
-      attachPeopleListener();
+      dayData = await loadDayData(today, {force:true});
+      attachDayListener(currentDate); attachIndexListener(); attachPeopleListener();
       renderAll();
       return;
     }
@@ -256,22 +298,20 @@ async function init(){
     daysIndex = [...daysIndex].sort();
 
     if(!daysIndex.includes(today)){
-      // A new calendar day started: auto-create it (same rule as "+ Nouveau jour"),
-      // cloned from the most recent existing day, statuses/objectifs/personnes cleared.
+      // Nouvelle journée : création ATOMIQUE. Si un collègue l'a déjà créée (et commencé à y saisir),
+      // on n'y touche pas — l'ancienne version écrasait ses saisies.
       const latest = latestDayDate();
-      const latestData = await loadDayData(latest);
+      const latestData = await loadDayData(latest, {force:true});
       const clonedTasks = (latestData.tasks || []).map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
-      daysIndex.push(today);
-      daysIndex.sort();
-      dayData = {tasks: clonedTasks, urgences: {}, targets: targetsSnapshotFrom(latestData)};
-      setDayCache(today, dayData);
-      await storageSet(dayKey(today), dayData);
-      await storageSet(INDEX_KEY, daysIndex);
+      const created = await storageTransaction(dayKey(today), cur => (cur && cur.tasks) ? undefined : {tasks: clonedTasks, urgences: {}, targets: targetsSnapshotFrom(latestData)});
+      const idxRes = await storageTransaction(INDEX_KEY, cur => { const a = Array.isArray(cur) ? cur : []; if(!a.includes(today)) a.push(today); return a.sort(); });
+      daysIndex = idxRes.value;
       currentDate = today;
-      logChange(`nouvelle journée créée automatiquement (${toFr(today)})`);
+      dayData = await loadDayData(today, {force:true});
+      if(created.committed) logChange(`nouvelle journée créée automatiquement (${toFr(today)})`);
     } else {
       currentDate = today;
-      dayData = await loadDayData(currentDate);
+      dayData = await loadDayData(currentDate, {force:true});
     }
 
     attachDayListener(currentDate);
@@ -280,7 +320,7 @@ async function init(){
     renderAll();
   } catch(err){
     document.getElementById('tableShell').innerHTML =
-      `<div class="empty-note">Un problème est survenu au chargement (${escapeHtml(String(err && err.message || err))}). <button class="btn" id="btnRetryInit" style="margin-left:8px;">Réessayer</button></div>`;
+      `<div class="empty-note">Un problème est survenu au chargement (${escapeHtml(String(err && err.message || err))}). Rien n'a été modifié. <button class="btn" id="btnRetryInit" style="margin-left:8px;">Réessayer</button></div>`;
     const btn = document.getElementById('btnRetryInit');
     if(btn) btn.addEventListener('click', init);
   }
@@ -298,85 +338,66 @@ async function persistDay(){
   }
 }
 
-// Fetches the latest server version of the day and merges in just one local task's
-// current state, instead of overwriting the whole day. This means if a teammate
-// changed a different task in the meantime, that change is not lost.
+// Enregistre UNE tâche : transaction Firebase qui relit la version serveur la plus récente,
+// n'y applique que les champs que nous avons modifiés, et conserve tout ce que les collègues ont fait.
+function finishSync(ok, mergedDay, localBefore){
+  if(ok){
+    const sameOthers = JSON.stringify(mergedDay.tasks) === JSON.stringify(localBefore.tasks);
+    dayData = mergedDay;
+    setDayCache(currentDate, dayData);
+    if(!sameOthers && !isTypingNow()) renderTable(); else renderSummary();
+    setStatus('Enregistré', '');
+    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
+  } else {
+    setStatus("Échec de l'enregistrement — réessaie", 'error');
+  }
+}
+async function syncDayChange(mutator){
+  setStatus('Enregistrement…', 'saving');
+  syncInFlight++;
+  const date = currentDate;
+  const localBefore = JSON.parse(JSON.stringify(dayData));
+  const base = dayBase[date] ? JSON.parse(JSON.stringify(dayBase[date])) : null;
+  try{
+    const res = await storageTransaction(dayKey(date), cur => {
+      const server = (cur && cur.tasks) ? cur : {tasks: []};
+      if(!server.urgences) server.urgences = {};
+      if(!server.targets) server.targets = {};
+      mutator(server, base);
+      return server;
+    });
+    syncInFlight--;
+    if(date !== currentDate) { setDayCache(date, res.value); setStatus('Enregistré',''); return; }
+    finishSync(true, res.value, localBefore);
+  } catch(e){
+    syncInFlight--;
+    finishSync(false);
+  }
+}
 async function syncTask(taskId){
-  setStatus('Enregistrement…', 'saving');
-  let serverDay = await storageGet(dayKey(currentDate));
-  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
-  // Use our current local tasks as the base — this naturally includes every
-  // local edit made so far, even ones from another syncTask() call that's
-  // still in flight. We only fold in tasks that exist on the server but not
-  // locally (e.g. a teammate added one while we were mid-edit).
-  const localTasks = dayData.tasks;
-  const localIds = new Set(localTasks.map(t => t.id));
-  const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
-  const mergedTasks = [...localTasks, ...extraFromServer];
-  const merged = {tasks: mergedTasks, ...dayExtras()};
-  // Only force a full re-render if we actually pulled in something new
-  // from someone else — otherwise a rebuild here would steal focus
-  // mid-typing/navigation.
-  const needsRerender = extraFromServer.length > 0;
-  // Update local state BEFORE writing: our own real-time listener fires
-  // synchronously as part of the write, and comparing against stale local
-  // data there would trigger a redundant, focus-stealing re-render.
-  dayData = merged;
-  setDayCache(currentDate, dayData);
-  const ok = await storageSet(dayKey(currentDate), merged);
-  if(ok){
-    if(needsRerender) renderTable(); else renderSummary();
-    setStatus('Enregistré', '');
-    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
-  } else {
-    setStatus("Échec de l'enregistrement — réessaie", 'error');
-  }
+  const local = dayData.tasks.find(t => t.id === taskId);
+  if(!local) return;
+  const localCopy = JSON.parse(JSON.stringify(local));
+  await syncDayChange((server, base) => {
+    const baseTask = base ? (base.tasks.find(t => t.id === taskId) || null) : null;
+    mergeTaskIntoServer(server.tasks, localCopy, baseTask);
+  });
 }
-
 async function syncTaskRemoval(taskId){
-  setStatus('Enregistrement…', 'saving');
-  let serverDay = await storageGet(dayKey(currentDate));
-  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
-  const localTasks = dayData.tasks.filter(t => t.id !== taskId);
-  const localIds = new Set(localTasks.map(t => t.id));
-  const extraFromServer = serverDay.tasks.filter(t => t.id !== taskId && !localIds.has(t.id));
-  const merged = {tasks: [...localTasks, ...extraFromServer], ...dayExtras()};
-  const needsRerender = extraFromServer.length > 0;
-  dayData = merged;
-  setDayCache(currentDate, dayData);
-  const ok = await storageSet(dayKey(currentDate), merged);
-  if(ok){
-    if(needsRerender) renderTable();
-    setStatus('Enregistré', '');
-    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
-  } else {
-    setStatus("Échec de l'enregistrement — réessaie", 'error');
-  }
+  await syncDayChange(server => { server.tasks = server.tasks.filter(t => t.id !== taskId); });
 }
-
-// Enregistre la saisie d'urgences du jour (par personne), en préservant les
-// tâches telles qu'elles sont sur le serveur au moment de l'écriture, sur le
-// même principe de fusion que syncTask().
+// Urgences (par personne) et objectifs du jour : fusion clé par clé, sans toucher aux tâches.
 async function syncUrgences(){
-  setStatus('Enregistrement…', 'saving');
-  let serverDay = await storageGet(dayKey(currentDate));
-  if(!serverDay || !serverDay.tasks) serverDay = {tasks: []};
-  const localTasks = dayData.tasks;
-  const localIds = new Set(localTasks.map(t => t.id));
-  const extraFromServer = serverDay.tasks.filter(t => !localIds.has(t.id));
-  const mergedTasks = [...localTasks, ...extraFromServer];
-  const merged = {tasks: mergedTasks, ...dayExtras()};
-  const needsRerender = extraFromServer.length > 0;
-  dayData = merged;
-  setDayCache(currentDate, dayData);
-  const ok = await storageSet(dayKey(currentDate), merged);
-  if(ok){
-    if(needsRerender) renderTable();
-    setStatus('Enregistré', '');
-    setTimeout(() => { const s=document.getElementById('status'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
-  } else {
-    setStatus("Échec de l'enregistrement — réessaie", 'error');
-  }
+  const urg = JSON.parse(JSON.stringify(dayData.urgences || {})), tgt = JSON.parse(JSON.stringify(dayData.targets || {}));
+  const baseU = (dayBase[currentDate] && dayBase[currentDate].urgences) || {}, baseT = (dayBase[currentDate] && dayBase[currentDate].targets) || {};
+  await syncDayChange(server => {
+    const apply = (dst, loc, bas) => {
+      Object.keys(loc).forEach(k => { if(JSON.stringify(loc[k]) !== JSON.stringify(bas[k])) dst[k] = loc[k]; });
+      Object.keys(bas).forEach(k => { if(!(k in loc)) delete dst[k]; });
+    };
+    apply(server.urgences, urg, baseU);
+    apply(server.targets, tgt, baseT);
+  });
 }
 async function persistPeople(){ await storageSet(PEOPLE_KEY, people); }
 async function persistIndex(){ await storageSet(INDEX_KEY, daysIndex); }
@@ -459,14 +480,15 @@ async function createNewDay(){
   }
   // Clone current day's tasks: keep name/priority, reset status to "À faire", clear objectif and personnes
   const clonedTasks = dayData.tasks.map(t => ({...t, id: cryptoId(), status: '', objectif: '', personIds: []}));
-  daysIndex.push(iso);
-  daysIndex.sort();
   currentDate = iso;
   dayData = {tasks: clonedTasks, urgences: {}, targets: targetsSnapshotFrom(dayData)};
+  await persistDay();
   setDayCache(currentDate, dayData);
   attachDayListener(currentDate);
-  await persistIndex();
-  await persistDay();
+  try{
+    const r = await storageTransaction(INDEX_KEY, cur => { const a = Array.isArray(cur) ? cur : []; if(!a.includes(iso)) a.push(iso); return a.sort(); });
+    daysIndex = r.value || daysIndex;
+  } catch(e){ daysIndex.push(iso); daysIndex.sort(); await persistIndex(); }
   renderAll();
   logChange(`a créé le jour du ${toFr(iso)}`);
 }
@@ -1046,10 +1068,13 @@ async function addTask(){
 async function addPerson(){
   const name = prompt('Nom de la personne à ajouter :');
   if(!name || !name.trim()) return;
-  people.push({id: cryptoId(), name: name.trim(), objectif: ''});
+  const newP = {id: cryptoId(), name: name.trim(), objectif: ''};
+  try{
+    const res = await storageTransaction(PEOPLE_KEY, cur => { const a = Array.isArray(cur) ? cur : []; if(!a.some(x => x.id === newP.id)) a.push(newP); return a; });
+    people = res.value || people.concat([newP]);
+  } catch(e){ alert("Échec de l'ajout, réessaie."); return; }
   renderFilterOptions();
   renderTable();
-  await persistPeople();
   logChange(`a ajouté ${name.trim()} à l'équipe`);
 }
 
