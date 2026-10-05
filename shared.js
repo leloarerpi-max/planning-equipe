@@ -107,6 +107,37 @@ async function storageGet(key){
     return raw ? JSON.parse(raw) : null;
   } catch(e){ return null; }
 }
+/* Lecture "stricte" : distingue ABSENT (renvoie null) de ERREUR (lève une exception).
+   À utiliser partout où un null déclencherait une création de données par défaut,
+   sinon une simple coupure réseau écraserait les vraies données. */
+async function storageGetStrict(key){
+  const snap = await fbDb.ref(dbPath(key)).get(); // lève une exception si erreur réseau/permission
+  if(!snap.exists()) return null;
+  const raw = snap.val();
+  return raw ? JSON.parse(raw) : null;
+}
+/* Lecture-modification-écriture ATOMIQUE (transaction Firebase) : si quelqu'un d'autre
+   écrit en même temps, Firebase rejoue fn avec la valeur la plus récente.
+   fn(valeurActuelleOuNull) renvoie la nouvelle valeur, ou undefined pour annuler.
+   Renvoie {committed, value}. Lève une exception si toutes les tentatives échouent. */
+async function storageTransaction(key, fn){
+  const attempts = [0, 400, 1200];
+  let lastErr;
+  for(let i=0; i<attempts.length; i++){
+    if(attempts[i]) await new Promise(r => setTimeout(r, attempts[i]));
+    try{
+      const res = await fbDb.ref(dbPath(key)).transaction(current => {
+        let cur = null;
+        if(current !== null && current !== undefined){ try{ cur = JSON.parse(current); } catch(e){ cur = null; } }
+        const next = fn(cur);
+        return next === undefined ? undefined : JSON.stringify(next);
+      }, undefined, false);
+      const raw = res.snapshot.val();
+      return { committed: res.committed, value: raw ? JSON.parse(raw) : null };
+    } catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('transaction failed');
+}
 async function storageSet(key, val){
   const attempts = [0, 400, 1200];
   for(let i=0; i<attempts.length; i++){
