@@ -1,612 +1,228 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Planning</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%85%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<style>
-  :root{
-    --paper:#F1EFE8;
-    --panel:#FAF9F5;
-    --ink:#242220;
-    --ink-soft:#6b6660;
-    --line:#DCD5C6;
-    --line-strong:#B9AF98;
-    --teal:#2F6F63;
-    --teal-bg:#E4EFEC;
-    --ochre:#B9702E;
-    --ochre-bg:#F6E9D9;
-    --violet:#5B4B8A;
-    --violet-bg:#EDE9F5;
-    --danger:#A23B2E;
-    --radius:3px;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    background:var(--paper);
-    color:var(--ink);
-    font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-    -webkit-font-smoothing:antialiased;
-    min-height:100vh;
-  }
-  .wrap{ max-width:1060px; margin:0 auto; padding:28px 16px 60px; }
-  header{ margin-bottom:16px; }
-
-  .apptabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; border-bottom:2px solid var(--line-strong); }
-  .apptab-btn{
-    font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:16px;
-    background:none; border:none; padding:9px 4px; margin-right:16px; color:var(--ink-soft);
-    cursor:pointer; position:relative; top:2px; display:flex; align-items:center; gap:6px;
-  }
-  .apptab-btn.active{ color:var(--ink); border-bottom:3px solid var(--violet); }
-  .apptab-btn .apptab-del{
-    font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:400; color:var(--ink-soft);
-    opacity:0; background:none; border:none; padding:0 2px;
-  }
-  .apptab-btn:hover .apptab-del{ opacity:.7; }
-  .apptab-btn .apptab-del:hover{ opacity:1; color:var(--danger); }
-  .apptab-add{
-    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:600; color:var(--ink-soft);
-    background:none; border:1px dashed var(--line-strong); border-radius:14px; padding:5px 12px;
-    cursor:pointer; align-self:center; margin-bottom:6px;
-  }
-  .apptab-add:hover{ color:var(--violet); border-color:var(--violet); }
-
-  table.custom-table{ border-collapse:collapse; width:100%; min-width:480px; font-size:13.5px; }
-  table.custom-table th, table.custom-table td{ border:1px solid var(--line); padding:0; }
-  table.custom-table thead th{
-    position:sticky; top:0; background:var(--panel); z-index:2; padding:0;
-  }
-  .custom-col-head{ display:flex; align-items:center; gap:4px; padding:8px 6px; }
-  .custom-col-head input{
-    flex:1; min-width:0; border:none; background:transparent; font-family:inherit;
-    font-size:13px; font-weight:700; color:var(--ink); padding:2px;
-  }
-  .custom-col-head input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  .custom-col-del{ flex-shrink:0; background:none; border:none; color:var(--ink-soft); cursor:pointer; font-size:12px; opacity:.5; }
-  .custom-col-del:hover{ opacity:1; color:var(--danger); }
-  td.custom-cell input{
-    width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px;
-    padding:9px 8px; color:var(--ink);
-  }
-  td.custom-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  td.custom-row-actions{ text-align:center; width:36px; }
-
-  /* Planning Repas grid */
-  table.meal-table{ border-collapse:collapse; width:100%; min-width:600px; font-size:13px; }
-  table.meal-table th, table.meal-table td{ border:1px solid var(--line); padding:0; text-align:center; }
-  table.meal-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:8px 4px; }
-  td.meal-date-cell{
-    position:sticky; left:0; background:var(--panel); padding:8px 10px; font-weight:600;
-    white-space:nowrap; text-align:center; z-index:1;
-  }
-  td.meal-date-cell .row-inner{ position:relative; display:flex; align-items:center; justify-content:center; }
-  td.meal-date-cell .remove-x{ position:absolute; right:0; opacity:0; }
-  tr:hover td.meal-date-cell .remove-x{ opacity:.6; }
-  td.meal-date-cell .remove-x:hover{ opacity:1 !important; color:var(--danger); }
-  th.meal-person-head{ position:relative; }
-  .meal-person-name{
-    display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:4px 8px; border-radius:12px;
-  }
-  .meal-person-del{ background:none; border:none; color:inherit; opacity:.6; cursor:pointer; font-size:12px; padding:0 2px; }
-  .meal-person-del:hover{ opacity:1; }
-  td.meal-cell input{
-    width:100%; border:none; background:transparent; font-family:inherit; font-size:13px; font-weight:600;
-    text-align:center; padding:9px 4px; color:var(--ink);
-  }
-  td.meal-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  td.meal-cell.filled{ }
-  td.meal-cell.empty input{ color:var(--ink-soft); }
-  td.meal-cell.meal-12{ background:var(--teal-bg); }
-  td.meal-cell.meal-12 input{ color:var(--teal); font-weight:700; }
-  td.meal-cell.meal-13{ background:#DCE8F7; }
-  td.meal-cell.meal-13 input{ color:#2F5C8A; font-weight:700; }
-  tr.meal-month-summary td{
-    background:var(--panel); border-top:2px solid var(--ink); font-weight:700; font-size:12.5px;
-    padding:8px 6px; color:var(--ink-soft);
-  }
-  tr.meal-month-summary td.meal-date-cell{ font-family:'Fraunces', Georgia, serif; color:var(--ink); }
-  tr.meal-week-sep td{
-    border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
-    font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
-  }
-  tr.meal-today-row td{ background:var(--violet-bg) !important; box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.meal-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.meal-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.meal-today-row td.meal-date-cell{ color:var(--violet); font-weight:800; }
-
-  /* Suivi Excel (import EASY_SUIVI : une ligne par jour, colonnes = indicateurs) */
-  table.suivi-table{ border-collapse:collapse; width:100%; min-width:1400px; font-size:12.5px; }
-  table.suivi-table th, table.suivi-table td{ border:1px solid var(--line); padding:0; text-align:center; }
-  table.suivi-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:8px 6px; white-space:nowrap; font-size:11.5px; }
-  td.suivi-date-cell{
-    position:sticky; left:0; background:var(--panel); padding:8px 10px; font-weight:600;
-    white-space:nowrap; text-align:center; z-index:1;
-  }
-  td.suivi-date-cell .row-inner{ position:relative; display:flex; align-items:center; justify-content:center; }
-  td.suivi-date-cell .remove-x{ position:absolute; right:0; opacity:0; }
-  tr:hover td.suivi-date-cell .remove-x{ opacity:.6; }
-  td.suivi-date-cell .remove-x:hover{ opacity:1 !important; color:var(--danger); }
-  td.suivi-cell{ padding:0; }
-  td.suivi-cell input{
-    width:100%; min-width:76px; border:none; background:transparent; font-family:inherit; font-size:12.5px; font-weight:600;
-    text-align:center; padding:9px 4px; color:var(--ink);
-  }
-  td.suivi-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  td.suivi-cell.suivi-formula{ font-weight:700; font-style:italic; color:var(--ink-soft); background:var(--teal-bg); padding:9px 4px; }
-  tr.suivi-month-summary td{
-    background:var(--panel); border-top:2px solid var(--ink); font-weight:700; font-size:11.5px;
-    padding:8px 4px; color:var(--ink-soft);
-  }
-  tr.suivi-month-summary td.suivi-date-cell{ font-family:'Fraunces', Georgia, serif; color:var(--ink); }
-  tr.suivi-week-sep td{
-    border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
-    font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
-  }
-  tr.suivi-today-row td{ background:var(--violet-bg) !important; box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.suivi-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.suivi-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.suivi-today-row td.suivi-date-cell{ color:var(--violet); font-weight:800; }
-
-  /* Avenants WF (checklist importé depuis Excel) */
-  table.checklist-table{ border-collapse:collapse; width:100%; min-width:420px; font-size:13.5px; }
-  table.checklist-table th, table.checklist-table td{ border:1px solid var(--line); padding:0; }
-  table.checklist-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:10px; text-align:left; font-weight:600; }
-  td.checklist-text{ padding:0; }
-  td.checklist-text input{
-    width:100%; border:none; background:transparent; font-family:inherit; font-size:13.5px;
-    padding:10px 12px; color:var(--ink);
-  }
-  td.checklist-text input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  tr.checklist-done td.checklist-text{ background:var(--teal-bg); }
-  tr.checklist-done td.checklist-text input{ color:var(--teal); text-decoration:line-through; text-decoration-color:var(--teal); opacity:.85; }
-  td.checklist-check{ text-align:center; width:70px; }
-  td.checklist-check input[type="checkbox"]{ width:20px; height:20px; cursor:pointer; accent-color:var(--teal); }
-  td.checklist-row-actions{ text-align:center; width:36px; }
-
-  /* Planning Tel (créneaux horaires en colonnes) */
-  table.phone-table{ border-collapse:collapse; width:100%; min-width:640px; font-size:13px; }
-  table.phone-table th, table.phone-table td{ border:1px solid var(--line); padding:0; text-align:center; }
-  table.phone-table thead th{ position:sticky; top:0; background:var(--panel); z-index:2; padding:6px 4px; }
-  .phone-slot-head{ display:flex; align-items:center; justify-content:center; gap:4px; font-weight:700; }
-  .phone-slot-head input{
-    width:70px; border:none; background:transparent; font-family:inherit; font-size:12.5px; font-weight:700;
-    text-align:center; color:var(--ink); padding:2px;
-  }
-  .phone-slot-head input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  .phone-slot-del{ background:none; border:none; color:var(--ink-soft); cursor:pointer; font-size:12px; opacity:.5; flex-shrink:0; }
-  .phone-slot-del:hover{ opacity:1; color:var(--danger); }
-  td.phone-date-cell{
-    position:sticky; left:0; background:var(--panel); padding:8px 10px; font-weight:600;
-    white-space:nowrap; z-index:1;
-  }
-  td.phone-date-cell .row-inner{ position:relative; display:flex; align-items:center; justify-content:center; }
-  td.phone-date-cell .remove-x{ position:absolute; right:0; opacity:0; }
-  tr:hover td.phone-date-cell .remove-x{ opacity:.6; }
-  td.phone-date-cell .remove-x:hover{ opacity:1 !important; color:var(--danger); }
-  td.phone-cell{ padding:0; }
-  td.phone-cell input{
-    width:100%; border:none; background:transparent; font-family:inherit; font-size:12.5px; font-weight:700;
-    text-align:center; padding:9px 4px; color:var(--ink-soft);
-  }
-  td.phone-cell input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  tr.phone-today-row td{ background:var(--violet-bg) !important; box-shadow:inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.phone-today-row td:first-child{ box-shadow:inset 2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.phone-today-row td:last-child{ box-shadow:inset -2px 0 0 var(--violet), inset 0 2px 0 var(--violet), inset 0 -2px 0 var(--violet); }
-  tr.phone-today-row td.phone-date-cell{ color:var(--violet); font-weight:800; }
-  .phone-today-badge{
-    display:inline-block; background:var(--violet); color:#fff; font-size:10px; font-weight:800;
-    letter-spacing:.03em; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle;
-  }
-  tr.phone-week-sep td{
-    border-bottom:none; padding:8px 10px 2px; background:var(--paper); font-family:'Fraunces', Georgia, serif;
-    font-size:12.5px; color:var(--ink-soft); border-top:1.5px solid var(--line-strong); text-align:left;
-  }
-  .meal-today-badge{
-    display:inline-block; background:var(--violet); color:#fff; font-size:10px; font-weight:800;
-    letter-spacing:.03em; padding:2px 7px; border-radius:10px; margin-left:6px; vertical-align:middle;
-  }
-  h1{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:clamp(26px,5vw,34px); margin:0 0 4px; letter-spacing:-0.01em; }
-  .subtitle{ color:var(--ink-soft); font-size:14px; margin:0; line-height:1.5; }
-
-  /* day bar / history */
-  .daybar{
-    display:flex; gap:6px; flex-wrap:wrap; align-items:center;
-    background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
-    padding:10px; margin:16px 0 12px;
-  }
-  .day-pill{
-    display:inline-flex; align-items:center; gap:6px;
-    background:#fff; border:1px solid var(--line-strong); border-radius:20px;
-    padding:6px 10px; font-size:12.5px; cursor:pointer; color:var(--ink-soft);
-    white-space:nowrap;
-  }
-  .day-pill:hover{ border-color:var(--violet); }
-  .day-pill.active{ background:var(--violet); border-color:var(--violet); color:#fff; font-weight:600; }
-  .day-pill .mini-count{ font-size:11px; opacity:.85; }
-  .day-pill .day-del{ background:none; border:none; color:inherit; opacity:.6; cursor:pointer; font-size:12px; padding:0 2px; }
-  .day-pill .day-del:hover{ opacity:1; }
-  .btn-newday{
-    background:var(--ink); color:#fff; border:none; border-radius:20px; padding:7px 14px;
-    font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap;
-  }
-  .btn-newday:hover{ background:#3a3733; }
-
-  .archive-banner{
-    display:flex; align-items:center; gap:8px; background:var(--ochre-bg); color:#7a4c1f;
-    border:1px solid var(--ochre); border-radius:var(--radius); padding:9px 14px; font-size:12.5px;
-    margin:0 0 12px;
-  }
-
-  .undo-toast{
-    position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
-    background:var(--ink); color:#fff; border-radius:20px; padding:10px 10px 10px 16px;
-    display:flex; align-items:center; gap:12px; font-size:13px; box-shadow:0 6px 18px rgba(0,0,0,.25);
-    z-index:50; animation: toastIn .2s ease-out;
-  }
-  .undo-toast button{
-    background:#fff; color:var(--ink); border:none; border-radius:14px; padding:6px 12px;
-    font-weight:700; font-size:12.5px; cursor:pointer;
-  }
-  @keyframes toastIn{ from{ opacity:0; transform:translate(-50%,8px); } to{ opacity:1; transform:translate(-50%,0); } }
-
-  .toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px; align-items:center; }
-  button{ font-family:inherit; font-size:13.5px; cursor:pointer; border-radius:var(--radius); }
-  .btn{ background:var(--panel); border:1px solid var(--line-strong); color:var(--ink); padding:7px 12px; transition:background .12s ease, border-color .12s ease; }
-  .btn:hover{ background:#fff; border-color:var(--violet); }
-  .btn-ghost{ background:transparent; border:1px solid transparent; color:var(--ink-soft); text-decoration:underline; text-underline-offset:2px; padding:7px 4px; }
-  .btn-ghost:hover{ color:var(--danger); }
-
-  .status{ font-size:12.5px; color:var(--ink-soft); min-height:18px; margin:2px 0 10px; }
-  .status.saving{ color:var(--violet); }
-  .status.error{ color:var(--danger); }
-
-  /* filters */
-  .filters{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }
-  .filters select{
-    font-family:inherit; font-size:12.5px; padding:6px 10px; border:1px solid var(--line-strong);
-    border-radius:20px; background:#fff; color:var(--ink); cursor:pointer;
-  }
-  .filters select:focus{ outline:1px solid var(--violet); }
-
-  .legend{ display:flex; flex-wrap:wrap; gap:14px; margin:0 2px 16px; font-size:12.5px; color:var(--ink-soft); }
-  .legend span{ display:inline-flex; align-items:center; gap:6px; }
-  .swatch{ width:10px; height:10px; border-radius:2px; display:inline-block; }
-
-  .team-objectif{
-    background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
-    padding:18px 20px; margin-bottom:16px; display:flex; align-items:center; gap:22px; flex-wrap:wrap;
-  }
-  .today-ring{ flex-shrink:0; }
-  .today-ring .ring-pct{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:20px; fill:var(--ink); }
-  .today-info .today-date{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:18px; margin-bottom:4px; }
-  .today-info .today-nums{ font-size:13.5px; color:var(--ink-soft); margin-bottom:8px; }
-  .today-info .today-nums b{ color:var(--ink); font-weight:700; }
-  .team-objectif .label{ font-size:12.5px; color:var(--ink-soft); }
-  .cat-badges-row{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
-  .cat-badge{
-    display:inline-flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--line-strong);
-    border-radius:12px; padding:4px 10px; font-size:11.5px; color:var(--ink-soft); white-space:nowrap;
-  }
-  .cat-badge b{ color:var(--ink); font-weight:700; }
-  .cat-badge-total{ background:var(--ink); border-color:var(--ink); color:#fff; }
-  .cat-badge-total b{ color:#fff; }
-  .bar-track{ background:var(--line); border-radius:2px; height:8px; overflow:hidden; margin-bottom:4px; }
-  .bar-fill{ height:100%; background:var(--ochre); transition:width .2s ease; }
-  .bar-fill.reached{ background:var(--teal); }
-  .bar-caption{ font-size:11.5px; color:var(--ink-soft); }
-
-  /* micro-animation when a task is marked Fait */
-  @keyframes rowPulse{
-    0%{ box-shadow: inset 0 0 0 0 rgba(47,111,99,0); }
-    30%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,.22); }
-    100%{ box-shadow: inset 0 0 0 999px rgba(47,111,99,0); }
-  }
-  tr.task-row.just-done{ animation: rowPulse .7s ease-out; }
-  @keyframes checkPop{
-    0%{ transform: scale(0); opacity:0; }
-    55%{ transform: scale(1.3); opacity:1; }
-    100%{ transform: scale(1); opacity:1; }
-  }
-
-  .table-shell{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); overflow-x:auto; }
-  table{ border-collapse:collapse; width:100%; min-width:720px; font-size:13.5px; }
-  thead th{ position:sticky; top:0; background:var(--panel); z-index:2; text-align:left; font-weight:600; padding:12px 10px; border-bottom:1.5px solid var(--line-strong); white-space:nowrap; }
-  tbody td{ padding:0; border-bottom:1px solid var(--line); vertical-align:middle; }
-
-  tr.task-row.row-rose{ background:#F2D0CA; }
-  tr.task-row.row-peche{ background:#FBE3C4; }
-  tr.task-row.row-bleu{ background:#C9D8EB; }
-  tr.task-row.row-empty{ background:transparent; }
-  tr.task-row:hover{ filter:brightness(0.98); }
-  tr.task-row.group-start td{ border-top:2px solid var(--line-strong); }
-
-  select.priority-select{ width:100%; border:none; background:transparent; font-family:inherit; font-size:13px; font-weight:700; padding:10px 4px; cursor:pointer; text-align:center; text-align-last:center; appearance:none; -webkit-appearance:none; }
-  select.priority-select.pr-rose{ color:#9C4A3E; }
-  select.priority-select.pr-peche{ color:#A8721E; }
-  select.priority-select.pr-bleu{ color:#3C5C82; }
-  select.priority-select.pr-empty{ color:var(--ink-soft); }
-
-  td.task-name{ padding:10px; font-weight:500; max-width:250px; display:flex; align-items:center; gap:6px; }
-  .priority-dot{
-    flex-shrink:0; width:15px; height:15px; border-radius:50%; padding:0; cursor:pointer;
-    border:1.5px solid var(--line-strong); box-shadow:inset 0 0 0 1px rgba(0,0,0,.05);
-  }
-  .priority-dot:hover{ border-color:var(--violet); transform:scale(1.12); }
-  .priority-dot:disabled{ cursor:not-allowed; }
-  td.task-name input{ flex:1; min-width:0; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; padding:2px; color:var(--ink); text-transform:uppercase; }
-  td.task-name input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  .multimode-toggle{
-    flex-shrink:0; background:none; border:1px solid var(--line-strong); border-radius:4px;
-    width:22px; height:22px; font-size:13px; line-height:1; cursor:pointer; color:var(--ink-soft);
-    display:flex; align-items:center; justify-content:center; padding:0;
-  }
-  .multimode-toggle:hover{ border-color:var(--violet); color:var(--violet); }
-
-  td.checklist-cell{ padding:8px; text-align:center; }
-  .checklist-group{ display:inline-flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; }
-  .checklist-item{
-    display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-strong); border-radius:14px;
-    padding:5px 12px 5px 9px; font-size:12px; font-weight:600; color:var(--ink-soft); background:#fff; cursor:pointer;
-    transition:border-color .15s ease, box-shadow .15s ease;
-  }
-  .checklist-item:hover{ border-color:var(--violet); }
-  .checklist-item input{ margin:0; cursor:pointer; }
-
-  td.person-slot-cell{ min-width:110px; padding:4px; text-align:center; }
-  select.person-slot-select{
-    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
-    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
-    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
-    color:var(--ink-soft); background:transparent; letter-spacing:.2px;
-  }
-  select.person-slot-select.has-person{ color:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06); }
-
-  select.status-select{
-    width:auto; min-width:76px; max-width:96%; border:none; font-family:inherit; font-size:12.5px; font-weight:700;
-    padding:8px 14px; cursor:pointer; text-align:center; text-align-last:center;
-    appearance:none; -webkit-appearance:none; border-radius:14px; display:inline-block; margin:2px 0;
-    letter-spacing:.2px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
-  }
-  select.status-select.st-fait{ background:var(--teal); color:#fff; }
-  select.status-select.st-afaire{ background:var(--ochre); color:#fff; }
-  select.status-select.st-empty{ background:#fff; color:var(--ink-soft); box-shadow:inset 0 0 0 1px var(--line-strong); }
-  td.status-cell{ position:relative; text-align:center; }
-  .status-check{
-    position:absolute; top:50%; right:6px; transform:translateY(-50%);
-    color:var(--teal); font-weight:800; font-size:15px; pointer-events:none;
-    animation: checkPop .45s ease-out;
-  }
-
-  input.obj-input{ width:66px; border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:700; padding:10px 4px; text-align:center; color:var(--ink); }
-  input.obj-input:focus{ outline:1px solid var(--violet); border-radius:2px; }
-  input.obj-input:disabled{ opacity:.45; cursor:not-allowed; }
-  td.obj-cell{ text-align:center; }
-
-  button.remove-x{ opacity:.5; color:var(--ink-soft); background:none; border:none; font-size:14px; padding:6px 10px; cursor:pointer; }
-  button.remove-x:hover{ opacity:1; color:var(--danger); }
-
-  .summary{ margin-top:28px; }
-  .summary h2{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:19px; margin:0 0 4px; }
-  .summary .hint{ color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; }
-
-  .summary-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .stat-card{ background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px 16px; }
-  .stat-card .stat-name{ font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
-  .stat-card .stat-value{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:26px; }
-
-  table#categoryTotalsTable td{ border:1px solid var(--line); padding:7px 12px; }
-  table#categoryTotalsTable td.cat-label{ color:var(--ink-soft); }
-  table#categoryTotalsTable td.cat-value{ text-align:right; font-weight:700; }
-  table#categoryTotalsTable tr.cat-total td{ border-top:2px solid var(--ink); font-weight:800; background:var(--panel); }
-
-  table.stats-matrix{ border-collapse:collapse; width:100%; font-size:12.5px; min-width:600px; }
-  table.stats-matrix th, table.stats-matrix td{ border:1px solid var(--line); padding:6px 8px; text-align:center; white-space:nowrap; }
-  table.stats-matrix thead th{ position:sticky; top:0; background:var(--panel); z-index:2; font-weight:700; }
-  table.stats-matrix td.stats-task-name{ text-align:left; text-transform:uppercase; font-weight:500; position:sticky; left:0; background:var(--panel); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-  table.stats-matrix td.stats-count-0{ color:var(--line-strong); }
-  table.stats-matrix td.stats-count-hi{ background:var(--teal-bg); color:var(--teal); font-weight:700; }
-
-  .journal-entry{ display:flex; gap:10px; padding:8px 4px; border-bottom:1px solid var(--line); font-size:12.5px; }
-  .journal-entry .journal-time{ color:var(--ink-soft); flex-shrink:0; width:90px; }
-  .journal-entry .journal-name{ font-weight:700; flex-shrink:0; }
-  .journal-entry:last-child{ border-bottom:none; }
-  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:12.5px; }
-  .bar-row .bar-label{ width:130px; flex-shrink:0; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; }
-  .bar-row .bar-track{ flex:1; margin-bottom:0; }
-  .bar-row .bar-count{ width:70px; text-align:right; color:var(--ink-soft); flex-shrink:0; }
-  .bar-row .person-obj-input{
-    width:52px; font-family:inherit; font-size:12.5px; text-align:center; padding:3px 4px;
-    border:1px solid var(--line-strong); border-radius:2px; background:#fff; color:var(--ink); flex-shrink:0;
-  }
-  .bar-row .person-obj-input:focus{ outline:1px solid var(--violet); }
-  .bar-row .person-obj-input:disabled{ opacity:.45; cursor:not-allowed; }
-
-  .empty-note{ padding:24px; color:var(--ink-soft); font-size:13.5px; }
-  footer{ margin-top:26px; font-size:12px; color:var(--ink-soft); border-top:1px solid var(--line); padding-top:12px; }
-
-  .urgence-input-row{
-    display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line-strong);
-    border-radius:var(--radius); padding:8px 12px;
-  }
-  .urgence-input-row .urg-name{ font-size:13px; font-weight:600; color:var(--ink); display:flex; align-items:center; white-space:nowrap; }
-  .urgence-input-row input{
-    width:56px; text-align:center; border:1px solid var(--line-strong); border-radius:2px; padding:5px 4px;
-    font-family:inherit; font-size:13px; background:var(--paper); color:var(--ink);
-  }
-  .urgence-input-row input:focus{ outline:1px solid var(--violet); }
-  .urgence-input-row input:disabled{ opacity:.45; cursor:not-allowed; }
-  .urgence-input-row.urgence-total-row{ background:var(--panel); border-color:var(--ink); }
-  .urgence-input-row.urgence-total-row .urg-name{ font-weight:800; }
-  .urgence-input-row .urg-total-value{ width:56px; text-align:center; font-weight:800; color:var(--ink); }
-
-  @media (max-width:520px){
-    .wrap{ padding:20px 10px 50px; }
-    td.task-name{ max-width:140px; }
-  }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="apptabs" id="appTabs"></div>
-
-  <section id="app-tab-planning" class="app-tab-section">
-  <header>
-    <h1>Planning</h1>
-    <p class="subtitle">Liste de tâches par jour : statut, priorité, personnes assignées et objectif. Chaque nouveau jour repart à zéro sur les statuts, mais l'historique des jours précédents reste consultable.</p>
-  </header>
-
-  <div class="team-objectif" id="teamObjectif" style="display:none"></div>
-
-  <div class="daybar" id="dayBar"></div>
-
-  <div class="archive-banner" id="archiveBanner" style="display:none;">
-    🔒 Ce n'est pas la date du jour — lecture seule. Seul le superviseur peut le modifier.
-  </div>
-
-  <div class="summary" id="urgencesPanel" style="display:none;">
-    <h2>🚨 Urgences du jour</h2>
-    <p class="hint">Indique ici, jour par jour, le nombre d'urgences traitées par chacun. Chaque saisie s'additionne automatiquement au total du mois dans les statistiques, sans passer par une tâche partagée.</p>
-    <div id="urgencesInputs" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
-  </div>
-
-  <div class="table-shell" id="tableShell">
-    <div class="empty-note">Chargement…</div>
-  </div>
-
-  <div class="summary" id="summaryByPerson" style="display:none">
-    <h2>Objectif par personne</h2>
-    <p class="hint">Le volume "fait" vient des tâches du jour ; l'objectif (à droite) est modifiable pour chaque personne.</p>
-    <div id="barsByPerson"></div>
-  </div>
-
-  <div class="filters" style="margin-top:22px;">
-    <select id="filterPerson"><option value="">Toutes les personnes</option></select>
-    <select id="filterPriority">
-      <option value="">Toutes les couleurs</option>
-      <option value="rose">Rose</option>
-      <option value="peche">Pêche</option>
-      <option value="bleu">Bleu</option>
-      <option value="none">Sans couleur</option>
-    </select>
-    <select id="filterStatus">
-      <option value="">Tous les statuts</option>
-      <option value="fait">Fait</option>
-      <option value="afaire">À faire</option>
-      <option value="none">Non défini</option>
-    </select>
-  </div>
-
-  <div class="legend">
-    <span><i class="swatch" style="background:#F2D0CA"></i>Rose</span>
-    <span><i class="swatch" style="background:#FBE3C4"></i>Pêche</span>
-    <span><i class="swatch" style="background:#C9D8EB"></i>Bleu</span>
-  </div>
-
-  <div class="toolbar" style="margin-top:22px;">
-    <button class="btn" id="btnAddTask">+ Ajouter une tâche</button>
-    <button class="btn" id="btnAddPerson">+ Ajouter une personne</button>
-    <button class="btn-ghost" id="btnClearDay">Vider les statuts de ce jour</button>
-    <button class="btn" id="btnStats">📊 Statistiques</button>
-    <button class="btn" id="btnJournal">🕒 Journal</button>
-    <button class="btn" id="btnExport">⬇️ Exporter</button>
-    <button class="btn" id="btnImport">⬆️ Importer</button>
-    <button class="btn" id="btnExportAll" title="Sauvegarde complète : Planning + tous les onglets (Suivi Excel, Avenants WF, etc.)">💾 Tout exporter (sauvegarde complète)</button>
-    <input type="file" id="importFileInput" accept="application/json" style="display:none;" />
-    <button class="btn" id="btnToggleAdmin" style="margin-left:auto;">🔒 Mode superviseur</button>
-  </div>
-  <div class="status" id="status"></div>
-
-  <div class="summary" id="journalPanel" style="display:none;">
-    <h2>Journal des modifications</h2>
-    <p class="hint">Les 100 dernières actions, les plus récentes en premier. <button class="btn-ghost" id="btnChangeMyName" style="font-size:12px;">✏️ Changer mon prénom affiché</button></p>
-    <div id="journalLoading" class="empty-note" style="display:none;">Chargement…</div>
-    <div id="journalList" style="max-height:400px; overflow:auto;"></div>
-  </div>
-
-  <div class="summary" id="statsPanel" style="display:none;">
-    <h2>Statistiques — répartition des tâches</h2>
-    <p class="hint">Sur tout l'historique disponible : nombre de fois où chaque tâche a été marquée "Fait" par chaque personne.</p>
-    <div id="statsLoading" class="empty-note" style="display:none;">Calcul en cours…</div>
-    <div id="statsTotals" class="summary-grid" style="margin-bottom:20px;"></div>
-    <div class="table-shell" id="statsTableShell" style="overflow:auto; max-height:460px;"></div>
-
-    <h2 style="margin-top:28px;">Échanges clients par personne et par mois</h2>
-    <p class="hint">Le chiffre saisi dans "Nombre" sur les tâches Échange client, partagé entre les personnes assignées quand elles sont plusieurs sur la même tâche.</p>
-    <div class="table-shell" id="statsEchangesShell" style="overflow:auto; max-height:460px;"></div>
-
-    <h2 style="margin-top:28px;">Urgences par personne et par mois</h2>
-    <p class="hint">Basé sur la saisie quotidienne du bloc « 🚨 Urgences du jour » (au-dessus du tableau des tâches) : chacun indique son propre nombre d'urgences traitées chaque jour, additionné automatiquement sur le mois.</p>
-    <div class="table-shell" id="statsUrgencesShell" style="overflow:auto; max-height:460px;"></div>
-  </div>
-
-  <footer>
-    Données stockées côté Firebase, visibles par toute personne utilisant cet outil.
-    <span> · </span><button class="btn-ghost" id="btnResetAll" style="font-size:12px; opacity:.45;" title="Réservé au superviseur">Réinitialiser tout l'outil</button>
-  </footer>
-  </section>
-
-  <section id="app-tab-custom" class="app-tab-section" style="display:none;">
-    <header>
-      <h1 id="customTabTitle">Onglet</h1>
-      <p class="subtitle">Tableau libre : ajoute des colonnes et des lignes selon ce que tu veux y suivre.</p>
-    </header>
-    <div class="toolbar">
-      <button class="btn" id="btnRenameTab">✏️ Renommer l'onglet</button>
-      <button class="btn" id="btnAddColumn">+ Ajouter une colonne</button>
-      <button class="btn" id="btnAddRow">+ Ajouter une ligne</button>
-      <button class="btn" id="btnAddMealDate" style="display:none;">+ Ajouter une date</button>
-      <button class="btn" id="btnAddMealMonth" style="display:none;">+ Ajouter un mois (lun-ven)</button>
-      <button class="btn" id="btnSaveMealTemplate" style="display:none;">💾 Enregistrer ce planning comme modèle</button>
-      <button class="btn" id="btnAddMealPerson" style="display:none;">+ Ajouter une personne</button>
-      <button class="btn" id="btnAddChecklistRow" style="display:none;">+ Ajouter une ligne</button>
-      <button class="btn" id="btnImportExcel" style="display:none;">📥 Importer un fichier Excel</button>
-      <input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
-      <button class="btn" id="btnAddPhoneDate" style="display:none;">+ Ajouter une date</button>
-      <button class="btn" id="btnAddPhoneMonth" style="display:none;">+ Ajouter un mois (lun-ven)</button>
-      <button class="btn" id="btnAddPhoneSlot" style="display:none;">+ Ajouter un créneau</button>
-      <button class="btn" id="btnAddPhonePerson" style="display:none;">+ Ajouter une personne</button>
-      <button class="btn" id="btnRenamePhonePerson" style="display:none;">✏️ Renommer une personne</button>
-      <button class="btn" id="btnSavePhoneTemplate" style="display:none;">💾 Enregistrer ce planning comme modèle</button>
-      <button class="btn" id="btnAddSuiviDate" style="display:none;">+ Ajouter une date</button>
-      <button class="btn" id="btnImportSuiviExcel" style="display:none;">📥 Importer le fichier EASY_SUIVI</button>
-      <button class="btn" id="btnExportSuivi" style="display:none;">⬇️ Exporter en Excel</button>
-      <input type="file" id="suiviExcelFileInput" accept=".xlsx,.xls" style="display:none;" />
-      <button class="btn-ghost" id="btnConvertMealPlanning" style="opacity:.7;">🍽️ Transformer en Planning Repas</button>
-      <button class="btn-ghost" id="btnConvertChecklist" style="opacity:.7;">📋 Transformer en Avenants WF</button>
-      <button class="btn-ghost" id="btnConvertPhonePlanning" style="opacity:.7;">📞 Transformer en Planning Tel</button>
-      <button class="btn-ghost" id="btnConvertSuivi" style="opacity:.7;">🧮 Transformer en Suivi Excel</button>
-      <button class="btn-ghost" id="btnDeleteTab" style="margin-left:auto; opacity:.45;" title="Réservé au superviseur">Supprimer cet onglet</button>
-    </div>
-    <div class="status" id="customStatus"></div>
-    <div class="table-shell" id="customTableShell">
-      <div class="empty-note">Chargement…</div>
-    </div>
-  </section>
-</div>
-
-<script>
+/* ==========================================================================
+   impaye.js — encart « Suivi impayé » de l'onglet Planning.
+   Chargé EN DERNIER (voir index.html) : s'il manquait ou plantait, le reste
+   du site continuerait de fonctionner.
+   Données : une seule liste partagée (clé Firebase 'po:impaye'), sous la forme
+   { rows: [ { id, date:'AAAA-MM-JJ', count:Nombre|'', done:true|false } ] }.
+   Chaque modification (ajout, changement d'un champ, statut, suppression) est une
+   TRANSACTION Firebase portant sur UNE ligne : deux personnes peuvent saisir en
+   même temps sans s'écraser.
+   ========================================================================== */
 (function(){
-  var v = Date.now(); // change à chaque chargement de page : force le re-téléchargement
-  var scripts = ['shared.js', 'planning.js', 'customtabs.js'];
-  var i = 0;
-  function loadNext(){
-    if(i >= scripts.length) return;
-    var s = document.createElement('script');
-    s.src = scripts[i] + '?v=' + v;
-    s.onload = function(){ i++; loadNext(); };
-    s.onerror = function(){ console.error('Échec du chargement de ' + scripts[i]); };
-    document.body.appendChild(s);
+  const IMPAYE_KEY = 'po:impaye';
+  let impaye = { rows: [] };
+  let loaded = false;
+  let dirty = false; // une mise à jour est arrivée pendant une saisie : on l'affichera après
+
+  const card = document.getElementById('impayeCard');
+  if(!card) return;
+
+  /* --- style (reprend les couleurs du site) ------------------------------ */
+  const st = document.createElement('style');
+  st.textContent = `
+    .impaye-card{ margin-top:22px; max-width:440px; }
+    .impaye-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+    .impaye-head h2{ font-family:'Fraunces', Georgia, serif; font-weight:600; font-size:19px; margin:0; }
+    .impaye-actions{ display:flex; gap:6px; align-items:center; }
+    .impaye-table{ width:100%; border-collapse:collapse; background:var(--panel); border:2px solid var(--ink); }
+    .impaye-table td{ border:1px solid var(--ink); padding:0; height:34px; text-align:center; }
+    .impaye-table input{ width:100%; height:32px; border:none; background:transparent; text-align:center; font:inherit; color:inherit; padding:0 4px; }
+    .impaye-table input:focus{ outline:2px solid var(--violet); outline-offset:-2px; background:#fff; }
+    .impaye-first td{ background:var(--ochre-bg); }
+    .impaye-status{ width:100%; height:32px; border:none; background:transparent; font:inherit; font-weight:600; letter-spacing:.3px; cursor:pointer; color:var(--ink); }
+    .impaye-status:hover{ background:var(--teal-bg); }
+    .impaye-status:empty::after{ content:'·'; color:var(--line-strong); }
+    td.impaye-x{ width:26px; border:none !important; background:transparent !important; }
+    .impaye-x button{ border:none; background:none; color:var(--ink-soft); cursor:pointer; opacity:0; font-size:13px; }
+    .impaye-table tr:hover .impaye-x button{ opacity:.8; }
+    .impaye-x button:hover{ color:var(--danger); opacity:1; }
+    .impaye-total td{ background:var(--teal-bg); font-weight:600; }
+    .impaye-total td:first-child{ letter-spacing:.2px; }
+    .impaye-empty td{ color:var(--ink-soft); font-size:13px; padding:10px; }
+    @media (max-width:520px){ .impaye-x button{ opacity:.6; } }
+  `;
+  document.head.appendChild(st);
+
+  /* --- utilitaires -------------------------------------------------------- */
+  function norm(v){
+    const rows = (v && Array.isArray(v.rows)) ? v.rows : [];
+    return { rows: rows.filter(r => r && r.id).map(r => ({
+      id: r.id,
+      date: r.date || '',
+      count: (r.count === '' || r.count == null) ? '' : (Number(r.count) || 0),
+      done: !!r.done
+    })) };
   }
-  loadNext();
+  function todayLocalIso(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function frDate(iso){ const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? `${m[3]}/${m[2]}` : '(sans date)'; }
+  function total(){ return impaye.rows.reduce((s, r) => s + (Number(r.count) || 0), 0); }
+  function inputFocusedInside(){
+    const a = document.activeElement;
+    return !!(a && card.contains(a) && a.tagName === 'INPUT');
+  }
+
+  /* --- affichage ---------------------------------------------------------- */
+  function render(focusRowId){
+    dirty = false;
+    let body = '';
+    if(!impaye.rows.length){
+      body = `<tr class="impaye-empty"><td colspan="3">Aucune ligne. Clique sur « + Ajouter une ligne ».</td><td class="impaye-x"></td></tr>`;
+    } else {
+      body = impaye.rows.map((r, i) => `
+        <tr data-id="${escapeHtml(r.id)}" class="${i === 0 ? 'impaye-first' : ''}">
+          <td><input type="date" data-f="date" value="${escapeHtml(r.date)}" aria-label="Date"></td>
+          <td><input type="number" min="0" step="1" data-f="count" value="${r.count === '' ? '' : r.count}" aria-label="Nombre d'impayés"></td>
+          <td><button class="impaye-status" data-act="toggle" title="Cliquer pour marquer FAIT / retirer">${r.done ? 'FAIT' : ''}</button></td>
+          <td class="impaye-x"><button data-act="del" title="Supprimer cette ligne" aria-label="Supprimer">✕</button></td>
+        </tr>`).join('');
+    }
+    card.innerHTML = `
+      <div class="impaye-head">
+        <h2>Suivi impayé</h2>
+        <div class="impaye-actions">
+          <button class="btn" data-act="add">+ Ajouter une ligne</button>
+          <button class="btn-ghost" data-act="clear" title="Réservé au superviseur">Vider</button>
+        </div>
+      </div>
+      <table class="impaye-table"><tbody>
+        ${body}
+        <tr class="impaye-total"><td>TOTAL IMPAYÉ</td><td data-total>${total()}</td><td></td><td class="impaye-x"></td></tr>
+      </tbody></table>`;
+    if(focusRowId){
+      const inp = card.querySelector(`tr[data-id="${CSS.escape(focusRowId)}"] input[data-f="count"]`);
+      if(inp) inp.focus();
+    }
+  }
+  function updateTotalOnly(){
+    const t = card.querySelector('[data-total]');
+    if(t) t.textContent = total();
+  }
+  function refreshIfIdle(focusRowId){
+    if(inputFocusedInside() && !focusRowId){ dirty = true; updateTotalOnly(); return; }
+    render(focusRowId);
+  }
+  card.addEventListener('focusout', () => {
+    setTimeout(() => { if(dirty && !inputFocusedInside()) render(); }, 0);
+  });
+
+  /* --- écritures (transactions, une ligne à la fois) ---------------------- */
+  let statusTimer = null;
+  async function mutate(mutator, opts){
+    opts = opts || {};
+    setStatus('Enregistrement…', 'saving');
+    try{
+      const res = await storageTransaction(IMPAYE_KEY, cur => { const d = norm(cur); mutator(d); return d; });
+      impaye = norm(res.value);
+      loaded = true;
+      refreshIfIdle(opts.focusRowId);
+      setStatus('Enregistré', '');
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => { const s = document.getElementById('status'); if(s && s.textContent === 'Enregistré') s.textContent = ''; }, 1200);
+      return true;
+    } catch(e){
+      setStatus("Échec de l'enregistrement — réessaie", 'error');
+      return false;
+    }
+  }
+  function findLocal(id){ return impaye.rows.find(r => r.id === id); }
+
+  async function addRow(){
+    ensureMyName();
+    const row = { id: cryptoId(), date: todayLocalIso(), count: '', done: false };
+    const ok = await mutate(d => { d.rows.push(row); }, { focusRowId: row.id });
+    if(ok) logChange('a ajouté une ligne au suivi impayé');
+  }
+  async function setField(id, field, value){
+    const before = findLocal(id);
+    if(!before) return;
+    const oldVal = before[field];
+    if(oldVal === value) return;
+    before[field] = value; // affichage immédiat du total
+    updateTotalOnly();
+    const ok = await mutate(d => { const r = d.rows.find(x => x.id === id); if(r) r[field] = value; });
+    if(!ok){ const cur = findLocal(id); if(cur) cur[field] = oldVal; refreshIfIdle(); return; } // échec : on revient à la valeur d'avant plutôt que d'afficher une valeur non enregistrée
+    {
+      if(field === 'count') logChange(`suivi impayé : ligne du ${frDate(before.date)} → ${value === '' ? '(vide)' : value}`);
+      if(field === 'date') logChange(`suivi impayé : date modifiée → ${frDate(value)}`);
+    }
+  }
+  async function toggleDone(id){
+    const r = findLocal(id);
+    if(!r) return;
+    const next = !r.done;
+    const ok = await mutate(d => { const x = d.rows.find(y => y.id === id); if(x) x.done = next; });
+    if(ok) logChange(`suivi impayé : ligne du ${frDate(r.date)} (${r.count === '' ? '—' : r.count}) ${next ? 'marquée FAIT' : 'remise à faire'}`);
+  }
+  async function deleteRow(id){
+    const idx = impaye.rows.findIndex(r => r.id === id);
+    if(idx < 0) return;
+    const removed = {...impaye.rows[idx]};
+    const ok = await mutate(d => { d.rows = d.rows.filter(r => r.id !== id); });
+    if(!ok) return;
+    logChange(`a supprimé une ligne du suivi impayé (${frDate(removed.date)}, ${removed.count === '' ? '—' : removed.count})`);
+    showUndoToast('Ligne supprimée', async () => {
+      await mutate(d => { if(!d.rows.some(r => r.id === removed.id)) d.rows.splice(Math.min(idx, d.rows.length), 0, removed); });
+    });
+  }
+  async function clearAll(){
+    if(!isAdmin){ alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe."); return; }
+    if(!impaye.rows.length) return;
+    if(!confirm('Vider tout le tableau « Suivi impayé » ? (Tu pourras annuler pendant quelques secondes.)')) return;
+    const backup = impaye.rows.map(r => ({...r}));
+    const ok = await mutate(d => { d.rows = []; });
+    if(!ok) return;
+    logChange(`a vidé le suivi impayé (${backup.length} ligne(s))`);
+    showUndoToast('Tableau vidé', async () => {
+      await mutate(d => { backup.forEach(b => { if(!d.rows.some(r => r.id === b.id)) d.rows.push(b); }); });
+    });
+  }
+
+  /* --- événements (délégation : le tableau est redessiné) ----------------- */
+  card.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if(!b) return;
+    const act = b.dataset.act;
+    const tr = b.closest('tr[data-id]');
+    if(act === 'add') addRow();
+    else if(act === 'clear') clearAll();
+    else if(act === 'toggle' && tr) toggleDone(tr.dataset.id);
+    else if(act === 'del' && tr) deleteRow(tr.dataset.id);
+  });
+  card.addEventListener('change', e => {
+    const inp = e.target.closest('input[data-f]');
+    const tr = e.target.closest('tr[data-id]');
+    if(!inp || !tr) return;
+    if(inp.dataset.f === 'count'){
+      const v = inp.value === '' ? '' : Math.max(0, Math.round(Number(inp.value)) || 0);
+      setField(tr.dataset.id, 'count', v);
+    } else {
+      setField(tr.dataset.id, 'date', inp.value);
+    }
+  });
+
+  /* --- chargement + synchro temps réel ------------------------------------ */
+  async function load(){
+    try{
+      const v = await storageGetStrict(IMPAYE_KEY); // erreur réseau => exception, jamais un tableau « vide » écrit par erreur
+      impaye = norm(v);
+      loaded = true;
+      render();
+    } catch(e){
+      card.innerHTML = `<div class="empty-note">Suivi impayé : connexion impossible, rien n'a été modifié. <button class="btn" data-retry style="margin-left:8px;">Réessayer</button></div>`;
+      const r = card.querySelector('[data-retry]');
+      if(r) r.addEventListener('click', load);
+      return;
+    }
+    fbDb.ref(dbPath(IMPAYE_KEY)).on('value', snap => {
+      let fresh;
+      try{ fresh = norm(snap.exists() && snap.val() ? JSON.parse(snap.val()) : null); } catch(e){ return; }
+      if(JSON.stringify(fresh) === JSON.stringify(impaye)) return;
+      impaye = fresh;
+      refreshIfIdle();
+    });
+  }
+  load();
 })();
-</script>
-</body>
-</html>
