@@ -17,6 +17,13 @@ let customSortState = { colId: null, dir: null };  // tri d'affichage uniquement
 let customSearchTerm = '';                          // recherche d'affichage uniquement, non enregistrée
 let genericStatsOpen = false;                       // panneau "Statistiques par personne et par mois" (tableau libre)
 
+/* --- Alerte « nouveau fichier Excel déposé » (Avenants WF) : état --- */
+const AVENANT_NOTIF_KEY = 'po:avenant-notif';
+let avenantBadgeTabId = null;   // onglet qui porte la pastille rouge
+let avenantPending = null;      // dernier dépôt non encore marqué « Vu »
+let avenantFirstSnap = true;
+const AVENANT_BASE_TITLE = document.title;
+
 function defaultCustomTabData(){
   return {
     type: 'generic',
@@ -642,10 +649,13 @@ function renderAppTabs(){
   const bar = document.getElementById('appTabs');
   let html = `<button class="apptab-btn ${activeAppTab==='planning'?'active':''}" data-apptab="planning">Planning</button>`;
   customTabs.forEach(t => {
-    html += `<button class="apptab-btn ${activeAppTab===t.id?'active':''}" data-apptab="${t.id}">${escapeHtml(t.name)}<span class="apptab-del" data-apptab-del="${t.id}" title="Supprimer cet onglet (superviseur)">✕</span></button>`;
+    html += `<button class="apptab-btn ${activeAppTab===t.id?'active':''}" data-apptab="${t.id}">${escapeHtml(t.name)}${avenantBadgeTabId===t.id ? '<span class="apptab-badge" title="Nouveau fichier Excel déposé"></span>' : ''}<span class="apptab-del" data-apptab-del="${t.id}" title="Supprimer cet onglet (superviseur)">✕</span></button>`;
   });
   html += `<button class="apptab-add" id="btnAddAppTab">+ Nouvel onglet</button>`;
+  html += avenantNotifButtonHtml();
   bar.innerHTML = html;
+  const btnNotif = document.getElementById('btnNotifPerm');
+  if(btnNotif) btnNotif.addEventListener('click', avenantAskPermission);
 
   bar.querySelectorAll('.apptab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -685,6 +695,7 @@ async function switchAppTab(tabId){
   genericStatsOpen = false;
   const gsp0 = document.getElementById('genericStatsPanel');
   if(gsp0) gsp0.style.display = 'none';
+  if(avenantBadgeTabId === tabId) avenantBadgeTabId = null;
   activeAppTab = tabId;
   document.getElementById('app-tab-planning').style.display = tabId === 'planning' ? '' : 'none';
   document.getElementById('app-tab-custom').style.display = tabId === 'planning' ? 'none' : '';
@@ -1615,33 +1626,110 @@ document.getElementById('excelFileInput').addEventListener('change', async (e) =
     alert("La librairie de lecture Excel n'a pas pu se charger. Vérifie ta connexion et réessaie.");
     return;
   }
+  let values;
   try{
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
     const firstSheet = wb.Sheets[wb.SheetNames[0]];
     const rows2d = XLSX.utils.sheet_to_json(firstSheet, {header:1});
-    let values = rows2d.map(r => (r && r[0] !== undefined && r[0] !== null) ? String(r[0]).trim() : '').filter(v => v !== '');
+    values = rows2d.map(r => (r && r[0] !== undefined && r[0] !== null) ? String(r[0]).trim() : '').filter(v => v !== '');
     if(!values.length){ alert('Aucune donnée trouvée dans la première colonne de ce fichier.'); return; }
-    if(values.length && confirm(`Première ligne détectée : "${values[0]}"\n\nEst-ce un titre de colonne à ignorer (plutôt qu'une vraie donnée) ?`)){
+    if(confirm(`Première ligne détectée : "${values[0]}"\n\nEst-ce un titre de colonne à ignorer (plutôt qu'une vraie donnée) ?`)){
       values = values.slice(1);
     }
     if(!values.length){ alert('Plus aucune ligne à importer après avoir retiré le titre.'); return; }
-    const d = activeCustomTabData;
-    const existingTexts = new Set(d.rows.map(r => r.text));
-    let added = 0;
-    values.forEach(v => {
-      if(existingTexts.has(v)) return; // avoid duplicating identical lines on re-import
-      d.rows.push({id: cryptoId(), text: v, done: false});
-      added++;
-    });
-    renderChecklistTable();
-    await persistCustomTab();
-    logChange(`a importé ${added} ligne(s) depuis un fichier Excel dans « ${(customTabs.find(t=>t.id===activeCustomTabId)||{}).name || 'Avenants WF'} »`);
-    alert(`${added} ligne(s) importée(s)${added < values.length ? ` (${values.length - added} déjà présente(s), ignorée(s))` : ''}.`);
   } catch(err){
     alert("Impossible de lire ce fichier. Vérifie qu'il s'agit bien d'un fichier Excel (.xlsx) ou CSV valide.");
+    return;
   }
+  await importAvenantsValues(values);
 });
+
+/* Comparaison des textes pour éviter les doublons : sans majuscules, accents ni espaces en trop */
+function avenantKey(t){
+  return String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/* Import d'un Excel dans Avenants WF, en UNE transaction Firebase :
+   - supprime les lignes cochées « Fait »
+   - garde toutes les lignes non cochées, intactes
+   - ajoute les lignes du fichier absentes des lignes gardées (jamais de doublon, même dans le fichier)
+   Puis prévient toute l'équipe (bannière, pastille, notification ordinateur). */
+async function importAvenantsValues(values){
+  if(!activeCustomTabData || activeCustomTabData.type !== 'checklist') return;
+  const tabId = activeCustomTabId;
+  const tabName = (customTabs.find(t => t.id === tabId) || {}).name || 'Avenants WF';
+  ensureMyName();
+  const base0 = activeCustomTabData;
+  let stats = null;
+  setStatus2('customStatus', 'Import en cours…', 'saving');
+  let res;
+  try{
+    res = await storageTransaction(customTabKey(tabId), cur => {
+      const base = (cur && Array.isArray(cur.rows)) ? cur : base0;
+      const oldRows = base.rows || [];
+      const kept = oldRows.filter(r => !r.done);
+      const removed = oldRows.filter(r => r.done);
+      const seen = new Set(kept.map(r => avenantKey(r.text)));
+      const added = [];
+      let dupes = 0;
+      values.forEach(v => {
+        const k = avenantKey(v);
+        if(!k) return;
+        if(seen.has(k)){ dupes++; return; }
+        seen.add(k);
+        added.push({id: cryptoId(), text: v, done: false});
+      });
+      stats = {added, removed, dupes};
+      if(!added.length && !removed.length) return undefined; // rien à changer : on n'écrit rien
+      return {...base, rows: kept.concat(added)};
+    });
+  } catch(err){
+    setStatus2('customStatus', "Échec de l'enregistrement — réessaie", 'error');
+    alert("L'import n'a pas pu être enregistré (connexion ?). Rien n'a été modifié, réessaie.");
+    return;
+  }
+  if(!res.committed){
+    setStatus2('customStatus', '', '');
+    if(stats && !stats.added.length && !stats.removed.length){
+      alert(`Rien à changer : les ${stats.dupes} ligne(s) du fichier sont déjà dans la liste, et aucune ligne « Fait » à effacer.`);
+    } else {
+      alert("L'import n'a pas pu être enregistré. Rien n'a été modifié, réessaie.");
+    }
+    return;
+  }
+  if(activeCustomTabId === tabId){
+    activeCustomTabData = res.value;
+    renderChecklistTable();
+  }
+  setStatus2('customStatus', 'Enregistré', '');
+  setTimeout(() => { const s = document.getElementById('customStatus'); if(s && s.textContent === 'Enregistré') s.textContent = ''; }, 1200);
+
+  const nAdded = stats.added.length, nRemoved = stats.removed.length;
+  const remaining = (res.value.rows || []).filter(r => !r.done).length;
+  logChange(`a importé un Excel dans « ${tabName} » : ${nAdded} nouvelle(s) ligne(s), ${nRemoved} ligne(s) « Fait » effacée(s), ${remaining} à faire`);
+
+  // signal partagé : toute l'équipe est prévenue (sauf celui qui dépose)
+  const notif = {id: cryptoId(), ts: Date.now(), by: myName || 'Quelqu\u2019un', tabId, tabName, added: nAdded, removed: nRemoved, remaining};
+  avenantMarkSeen(notif.ts);
+  await storageSet(AVENANT_NOTIF_KEY, notif);
+
+  const addedRows = stats.added, removedRows = stats.removed;
+  showUndoToast(`Import : ${nAdded} ajoutée(s), ${nRemoved} « Fait » effacée(s), ${remaining} à faire`, async () => {
+    try{
+      const r2 = await storageTransaction(customTabKey(tabId), cur => {
+        if(!cur || !Array.isArray(cur.rows)) return undefined;
+        const addedIds = new Set(addedRows.map(r => r.id));
+        const rows = cur.rows.filter(r => !addedIds.has(r.id));
+        const have = new Set(rows.map(r => r.id));
+        removedRows.forEach(r => { if(!have.has(r.id)) rows.push(r); });
+        return {...cur, rows};
+      });
+      if(r2.committed && activeCustomTabId === tabId){ activeCustomTabData = r2.value; renderChecklistTable(); }
+      logChange(`a annulé le dernier import Excel dans « ${tabName} »`);
+    } catch(err){ alert("L'annulation n'a pas pu être enregistrée. Rien n'a été modifié."); }
+  });
+}
 
 document.getElementById('btnConvertChecklist').addEventListener('click', async () => {
   if(!isAdmin){
@@ -2279,3 +2367,112 @@ async function addPersonEverywhere(){
 }
 const btnAddPersonEverywhere = document.getElementById('btnAddPersonEverywhere');
 if(btnAddPersonEverywhere) btnAddPersonEverywhere.addEventListener('click', addPersonEverywhere);
+
+
+/* ==========================================================================
+   Alerte « nouveau fichier Excel déposé » dans Avenants WF (pour toute l'équipe)
+   - bannière en haut de page, sur n'importe quel onglet, jusqu'au clic sur « Vu »
+   - pastille rouge sur l'onglet concerné (disparaît à l'ouverture de l'onglet)
+   - notification sur l'ordinateur tant que le site est ouvert dans un onglet
+   ========================================================================== */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    .apptab-badge{ display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--danger,#A23B2E); margin-left:7px; vertical-align:middle; animation:avenantPulse 1.4s ease-in-out infinite; }
+    @keyframes avenantPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.5); opacity:.55; } }
+    .avenant-banner{ position:fixed; top:0; left:0; right:0; z-index:9999; display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; padding:10px 14px; background:var(--violet,#5b3fd1); color:#fff; font-size:14px; box-shadow:0 2px 10px rgba(0,0,0,.25); }
+    .avenant-banner button{ border:none; border-radius:6px; padding:6px 12px; font:inherit; font-weight:600; cursor:pointer; }
+    .avenant-banner .av-see{ background:#fff; color:#222; }
+    .avenant-banner .av-ok{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.7); }
+  `;
+  document.head.appendChild(st);
+})();
+
+function avenantGetSeen(){ try{ return Number(localStorage.getItem('po-avenant-seen')) || 0; } catch(e){ return 0; } }
+function avenantMarkSeen(ts){ try{ localStorage.setItem('po-avenant-seen', String(ts)); } catch(e){} }
+
+function avenantNotifButtonHtml(){
+  if(typeof Notification === 'undefined') return '';
+  if(Notification.permission === 'granted') return '';
+  if(Notification.permission === 'denied') return `<button class="apptab-add" id="btnNotifPerm" title="Les notifications sont bloquées pour ce site">🔕 Notifications bloquées</button>`;
+  return `<button class="apptab-add" id="btnNotifPerm" title="Être prévenu sur l'ordinateur quand un Excel est déposé">🔔 Activer les notifications</button>`;
+}
+async function avenantAskPermission(){
+  if(typeof Notification === 'undefined'){ alert("Ce navigateur ne gère pas les notifications."); return; }
+  if(Notification.permission === 'denied'){
+    alert("Les notifications sont bloquées pour ce site.\n\nClique sur le cadenas à gauche de l'adresse du site, puis passe « Notifications » sur « Autoriser », et recharge la page.");
+    return;
+  }
+  let perm;
+  try{ perm = await Notification.requestPermission(); } catch(e){ perm = Notification.permission; }
+  renderAppTabs();
+  if(perm === 'granted'){
+    try{ new Notification('Notifications activées ✔', { body: 'Tu seras prévenu quand un Excel est déposé dans Avenants WF (site ouvert dans un onglet).' }); } catch(e){}
+  }
+}
+
+function avenantClearBanner(){
+  const old = document.getElementById('avenantBanner');
+  if(old) old.remove();
+  document.title = AVENANT_BASE_TITLE;
+}
+function avenantShowBanner(n){
+  avenantClearBanner();
+  const parts = [`${n.added} nouvelle(s) ligne(s)`];
+  if(n.removed) parts.push(`${n.removed} « Fait » effacée(s)`);
+  parts.push(`${n.remaining} à faire`);
+  const el = document.createElement('div');
+  el.id = 'avenantBanner';
+  el.className = 'avenant-banner';
+  el.innerHTML = `<span>📥 <b>Nouveau fichier Excel</b> dans « ${escapeHtml(n.tabName || 'Avenants WF')} » par <b>${escapeHtml(n.by || '?')}</b> (${escapeHtml(fmtLogTime(n.ts))}) — ${escapeHtml(parts.join(' · '))}</span><button class="av-see">Voir</button><button class="av-ok">Vu</button>`;
+  el.querySelector('.av-see').addEventListener('click', () => {
+    avenantDismiss(n);
+    if(customTabs.some(t => t.id === n.tabId)) switchAppTab(n.tabId);
+  });
+  el.querySelector('.av-ok').addEventListener('click', () => avenantDismiss(n));
+  document.body.appendChild(el);
+  document.title = '🔴 ' + AVENANT_BASE_TITLE;
+}
+function avenantDismiss(n){
+  avenantMarkSeen(n.ts);
+  avenantPending = null;
+  avenantBadgeTabId = null;
+  avenantClearBanner();
+  renderAppTabs();
+}
+function avenantDesktopNotify(n){
+  if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try{
+    const bits = [`${n.added} nouvelle(s) ligne(s)`];
+    if(n.removed) bits.push(`${n.removed} « Fait » effacée(s)`);
+    bits.push(`${n.remaining} à faire`);
+    const notif = new Notification(`${n.tabName || 'Avenants WF'} : nouveau fichier Excel`, {
+      body: `Déposé par ${n.by || '?'} — ${bits.join(' · ')}`,
+      tag: 'avenant-wf-excel',
+      renotify: true
+    });
+    notif.onclick = () => {
+      try{ window.focus(); } catch(e){}
+      if(customTabs.some(t => t.id === n.tabId)) switchAppTab(n.tabId);
+      notif.close();
+    };
+  } catch(e){ /* best-effort */ }
+}
+function initAvenantNotifications(){
+  fbDb.ref(dbPath(AVENANT_NOTIF_KEY)).on('value', snap => {
+    const first = avenantFirstSnap;
+    avenantFirstSnap = false;
+    if(!snap.exists()) return;
+    let n;
+    try{ n = JSON.parse(snap.val()); } catch(e){ return; }
+    if(!n || !n.ts) return;
+    if(n.ts <= avenantGetSeen()) return;                      // déjà vu, ou déposé par moi
+    if(avenantPending && avenantPending.id === n.id) return;  // déjà affiché
+    avenantPending = n;
+    avenantBadgeTabId = n.tabId;
+    renderAppTabs();
+    avenantShowBanner(n);
+    if(!first) avenantDesktopNotify(n);   // au chargement de la page : bannière seulement, pas de notification système
+  });
+}
+initAvenantNotifications();
