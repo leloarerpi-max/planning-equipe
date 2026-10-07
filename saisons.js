@@ -14,13 +14,15 @@
   /* --- saison d'après la date (hémisphère nord) --------------------------- */
   function seasonFromDate(d){
     const md = (d.getMonth() + 1) * 100 + d.getDate();
+    if(md >= 1201 && md <= 1225) return 'christmas';   // Noël : du 1er au 25 décembre
+    if(md >= 1020 && md <= 1031) return 'halloween';   // Halloween : du 20 au 31 octobre
     if(md >= 320 && md <= 620) return 'spring';
     if(md >= 621 && md <= 922) return 'summer';
     if(md >= 923 && md <= 1220) return 'autumn';
     return 'winter';
   }
-  const NAMES = { autumn: 'Automne', winter: 'Hiver', spring: 'Printemps', summer: 'Été', none: 'Sans décor' };
-  const ICONS = { autumn: '🍂', winter: '❄️', spring: '🌸', summer: '☀️', none: '🎨' };
+  const NAMES = { autumn: 'Automne', winter: 'Hiver', spring: 'Printemps', summer: 'Été', halloween: 'Halloween', christmas: 'Noël', none: 'Sans décor' };
+  const ICONS = { autumn: '🍂', winter: '❄️', spring: '🌸', summer: '☀️', halloween: '🎃', christmas: '🎄', none: '🎨' };
 
   /* --- palettes ------------------------------------------------------------ */
   const THEMES = {
@@ -47,6 +49,18 @@
       gradTop: '#FCF5E0', gradBottom: '#F2E3B8',
       bar: ['#F2B93B', '#4FB3BF', '#EE8A4B'],
       opacity: 0.18
+    },
+    halloween: {
+      paper: '#F2EAF0', line: '#DDD0DD', lineStrong: '#B8A3B8',
+      gradTop: '#F8F1F6', gradBottom: '#E4D6E6',
+      bar: ['#E8731A', '#5B3A8C', '#2B2233'],
+      opacity: 0.20
+    },
+    christmas: {
+      paper: '#F5EFE4', line: '#E3D8C6', lineStrong: '#C2AF8E',
+      gradTop: '#FAF4E9', gradBottom: '#EBE0CC',
+      bar: ['#B3312B', '#2F6F4F', '#D9A93E'],
+      opacity: 0.20
     }
   };
 
@@ -75,6 +89,26 @@
   function wave(x, y, c){
     return `<path d="M${x},${y} q8,-8 16,0 t16,0 t16,0" stroke="${c}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`;
   }
+  function pumpkin(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><ellipse cx="0" cy="2" rx="17" ry="14" fill="${c}"/><path d="M-6,-10 C-9,2 -9,8 -6,16 M6,-10 C9,2 9,8 6,16 M0,-12 L0,16" stroke="#ffffff" stroke-opacity=".4" stroke-width="1.4" fill="none"/><path d="M0,-12 C0,-18 3,-20 6,-21" stroke="#5E7A3A" stroke-width="3" stroke-linecap="round" fill="none"/></g>`;
+  }
+  function bat(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><path d="M0,-4 C-4,-12 -14,-14 -24,-6 C-20,-6 -18,-2 -16,2 C-12,-2 -8,0 -6,4 C-3,2 -1,2 0,6 C1,2 3,2 6,4 C8,0 12,-2 16,2 C18,-2 20,-6 24,-6 C14,-14 4,-12 0,-4Z" fill="${c}"/></g>`;
+  }
+  function star(x, y, rot, sc, c){
+    let pts = '';
+    for(let i = 0; i < 10; i++){
+      const r = i % 2 ? 4.5 : 11, a = i * 36 * Math.PI / 180;
+      pts += `${(Math.sin(a) * r).toFixed(1)},${(-Math.cos(a) * r).toFixed(1)} `;
+    }
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><polygon points="${pts.trim()}" fill="${c}"/></g>`;
+  }
+  function tree(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><polygon points="0,-24 -12,-6 12,-6" fill="${c}"/><polygon points="0,-14 -16,6 16,6" fill="${c}"/><rect x="-3" y="6" width="6" height="7" fill="#8A5A2B"/></g>`;
+  }
+  function ornament(x, y, sc, c){
+    return `<g transform="translate(${x} ${y}) scale(${sc})"><circle r="9" fill="${c}"/><rect x="-3" y="-13" width="6" height="5" fill="#D9A93E"/><path d="M-5,-3 C-3,-6 0,-7 2,-6" stroke="#ffffff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round" fill="none"/></g>`;
+  }
   function tile(season){
     let inner = '';
     if(season === 'autumn'){
@@ -86,6 +120,12 @@
     } else if(season === 'spring'){
       inner = flower(42, 46, 10, 1, '#E7A1B5', '#F2D16B') + leaf(170, 30, 40, .7, '#8DBB7A') + flower(112, 122, 0, 1.1, '#F4C6D1', '#F2D16B')
             + leaf(222, 150, -50, .75, '#8DBB7A') + flower(52, 204, 20, .9, '#E7A1B5', '#F2D16B') + leaf(160, 226, -10, .75, '#8DBB7A');
+    } else if(season === 'halloween'){
+      inner = pumpkin(44, 48, -8, 1, '#E8731A') + bat(170, 30, 10, .9, '#5B3A8C') + star(112, 124, 0, .7, '#E8731A')
+            + bat(222, 148, -12, .8, '#2B2233') + pumpkin(54, 206, 10, .85, '#E8731A') + bat(160, 226, 0, 1, '#5B3A8C');
+    } else if(season === 'christmas'){
+      inner = tree(42, 48, 0, 1, '#2F6F4F') + star(170, 30, 15, .9, '#D9A93E') + ornament(112, 124, 1, '#B3312B')
+            + flake(222, 148, 0, .9, '#D9A93E') + tree(54, 206, 0, .85, '#2F6F4F') + ornament(160, 226, .9, '#B3312B');
     } else {
       inner = sun(44, 46, 1, '#F2B93B') + wave(150, 34, '#4FB3BF') + sun(118, 124, 1.1, '#F2B93B')
             + wave(190, 150, '#4FB3BF') + wave(24, 206, '#4FB3BF') + sun(170, 224, .9, '#F2B93B');
@@ -160,7 +200,8 @@
     btn.title = choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`;
     const items = [['auto', `${ICONS[seasonFromDate(new Date())]} Automatique (selon la date)`],
       ['autumn', `${ICONS.autumn} Automne`], ['winter', `${ICONS.winter} Hiver`], ['spring', `${ICONS.spring} Printemps`],
-      ['summer', `${ICONS.summer} Été`], ['none', `${ICONS.none} Sans décor`]];
+      ['summer', `${ICONS.summer} Été`], ['halloween', `${ICONS.halloween} Halloween`], ['christmas', `${ICONS.christmas} Noël`],
+      ['none', `${ICONS.none} Sans décor`]];
     menu.innerHTML = items.map(([k, label]) => `<button type="button" data-season="${k}" class="${k === choice ? 'current' : ''}">${label}${k === choice ? ' ✓' : ''}</button>`).join('');
   }
   btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('open'); });
