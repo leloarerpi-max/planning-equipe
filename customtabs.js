@@ -908,7 +908,18 @@ function attachCustomTabListener(tabId){
 
 async function persistCustomTab(){
   setStatus2('customStatus', 'Enregistrement…', 'saving');
-  const ok = await storageSet(customTabKey(activeCustomTabId), activeCustomTabData);
+  let ok;
+  if(activeCustomTabData && activeCustomTabData.type === 'checklist'){
+    // le compteur (counts) est toujours repris tel qu'il est sur le serveur : une copie locale périmée ne peut pas l'écraser
+    const local = activeCustomTabData;
+    try{
+      const res = await storageTransaction(customTabKey(activeCustomTabId), cur => ({...local, counts: (cur && cur.counts) ? cur.counts : (local.counts || {})}));
+      ok = !!res.committed;
+      if(ok && res.value && res.value.counts) activeCustomTabData.counts = res.value.counts;
+    } catch(e){ ok = false; }
+  } else {
+    ok = await storageSet(customTabKey(activeCustomTabId), activeCustomTabData);
+  }
   setStatus2('customStatus', ok ? 'Enregistré' : "Échec de l'enregistrement — réessaie", ok ? '' : 'error');
   if(ok) setTimeout(() => { const s=document.getElementById('customStatus'); if(s.textContent==='Enregistré') s.textContent=''; }, 1200);
 }
@@ -1561,6 +1572,84 @@ async function deleteAppTab(tabId){
 document.getElementById('btnDeleteTab').addEventListener('click', () => deleteAppTab(activeCustomTabId));
 
 /* ---------- Avenants WF (checklist importé depuis Excel) ---------- */
+/* --- Compteur « Fait par » (Avenants WF) -------------------------------------------
+   d.counts = { 'AAAA-MM': { prénom: nombre } } est stocké À PART des lignes :
+   supprimer des lignes (à la main ou par le ménage de l'import) ne le diminue jamais.
+   Cocher +1, décocher -1 (correction d'un clic par erreur), changer le nom déplace le point. */
+function avenantMonthNow(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function avenantCountAdd(counts, month, name, delta){
+  if(!name || !month) return;
+  counts[month] = counts[month] || {};
+  const v = (Number(counts[month][name]) || 0) + delta;
+  if(v <= 0) delete counts[month][name]; else counts[month][name] = v;
+  if(!Object.keys(counts[month]).length) delete counts[month];
+}
+function checklistPeopleNames(extra){
+  const list = [];
+  try{ if(typeof people !== 'undefined' && Array.isArray(people)) people.forEach(p => { if(p && p.name) list.push(p.name); }); } catch(e){}
+  [myName, extra].forEach(n => { if(n && !list.some(x => x.toLowerCase() === String(n).toLowerCase())) list.push(n); });
+  return list;
+}
+/* Modifie UNE ligne et le compteur en une seule transaction Firebase */
+async function checklistMutateRow(rowId, mutator){
+  const tabId = activeCustomTabId;
+  setStatus2('customStatus', 'Enregistrement…', 'saving');
+  try{
+    const res = await storageTransaction(customTabKey(tabId), cur => {
+      if(!cur || !Array.isArray(cur.rows)) return undefined;
+      const d = JSON.parse(JSON.stringify(cur));
+      d.counts = d.counts || {};
+      const r = d.rows.find(x => x.id === rowId);
+      if(!r) return undefined;
+      mutator(r, d.counts);
+      return d;
+    });
+    if(res.committed && res.value && activeCustomTabId === tabId){ activeCustomTabData = res.value; }
+    setStatus2('customStatus', res.committed ? 'Enregistré' : '', '');
+    setTimeout(() => { const s = document.getElementById('customStatus'); if(s && s.textContent === 'Enregistré') s.textContent = ''; }, 1200);
+    return res.committed;
+  } catch(e){
+    setStatus2('customStatus', "Échec de l'enregistrement — réessaie", 'error');
+    return false;
+  }
+}
+function checklistToggleDone(rowId, checked){
+  const who = checked ? ensureMyName() : '';
+  return checklistMutateRow(rowId, (r, counts) => {
+    if(checked){
+      if(r.done) return;
+      r.done = true;
+      r.doneBy = who;
+      if(!r.countedBy){ r.countedBy = who; r.countedMonth = avenantMonthNow(); avenantCountAdd(counts, r.countedMonth, who, +1); }
+    } else {
+      if(r.countedBy){ avenantCountAdd(counts, r.countedMonth, r.countedBy, -1); delete r.countedBy; delete r.countedMonth; }
+      r.done = false;
+      r.doneBy = '';
+    }
+  });
+}
+function checklistSetDoneBy(rowId, name){
+  return checklistMutateRow(rowId, (r, counts) => {
+    if(name){
+      r.done = true;
+      if(r.countedBy && r.countedBy !== name){ avenantCountAdd(counts, r.countedMonth, r.countedBy, -1); avenantCountAdd(counts, r.countedMonth, name, +1); r.countedBy = name; }
+      else if(!r.countedBy){ r.countedBy = name; r.countedMonth = avenantMonthNow(); avenantCountAdd(counts, r.countedMonth, name, +1); }
+      r.doneBy = name;
+    } else {
+      if(r.countedBy){ avenantCountAdd(counts, r.countedMonth, r.countedBy, -1); delete r.countedBy; delete r.countedMonth; }
+      r.doneBy = '';
+    }
+  });
+}
+function checklistNameSelect(row){
+  const list = checklistPeopleNames(row.doneBy);
+  const opts = ['<option value="">Fait par…</option>'].concat(list.map(n => `<option value="${escapeHtml(n)}"${n.toLowerCase() === (row.doneBy||'').toLowerCase() ? ' selected' : ''}>${escapeHtml(n)}</option>`));
+  return `<select data-field="doneBy" class="checklist-by-select" aria-label="Fait par">${opts.join('')}</select>`;
+}
+
 function renderChecklistTable(){
   const shell = document.getElementById('customTableShell');
   const d = activeCustomTabData;
@@ -1568,11 +1657,12 @@ function renderChecklistTable(){
     shell.innerHTML = '<div class="empty-note">Aucune ligne. Importe un fichier Excel ou ajoute une ligne à la main.</div>';
     return;
   }
-  let html = '<table class="checklist-table"><thead><tr><th>Information</th><th style="text-align:center;">Fait</th><th></th></tr></thead><tbody>';
+  let html = '<table class="checklist-table"><thead><tr><th>Information</th><th style="text-align:center;">Fait</th><th style="text-align:center;">Fait par</th><th></th></tr></thead><tbody>';
   d.rows.forEach(row => {
     html += `<tr data-rowid="${row.id}" class="${row.done ? 'checklist-done' : ''}">
       <td class="checklist-text"><input type="text" value="${escapeHtml(row.text||'')}" data-field="text" /></td>
       <td class="checklist-check"><input type="checkbox" data-field="done" ${row.done?'checked':''} /></td>
+      <td class="checklist-by">${checklistNameSelect(row)}</td>
       <td class="checklist-row-actions"><button class="remove-x" data-rowdel="${row.id}" title="Supprimer la ligne">✕</button></td>
     </tr>`;
   });
@@ -1587,16 +1677,23 @@ function renderChecklistTable(){
       await persistCustomTab();
     });
     tr.querySelector('[data-field="done"]').addEventListener('change', async (e) => {
-      row.done = e.target.checked;
-      tr.className = row.done ? 'checklist-done' : '';
-      await persistCustomTab();
+      const checked = e.target.checked;
+      const ok = await checklistToggleDone(rowId, checked);
+      renderChecklistTable();   // relit l'état enregistré (nom, couleur) ; si l'écriture a échoué, la case revient à son état réel
+      if(ok) logChange(`${checked ? 'a coché' : 'a décoché'} une ligne dans « ${(customTabs.find(t=>t.id===activeCustomTabId)||{}).name || 'Avenants WF'} » : ${row.text || ''}`.slice(0, 160));
+    });
+    tr.querySelector('[data-field="doneBy"]').addEventListener('change', async (e) => {
+      const name = e.target.value;
+      const ok = await checklistSetDoneBy(rowId, name);
+      renderChecklistTable();
+      if(ok) logChange(name ? `Avenants WF : « ${(row.text || '').slice(0,60)} » faite par ${name}` : `Avenants WF : nom retiré sur « ${(row.text || '').slice(0,60)} »`);
     });
   });
   shell.querySelectorAll('[data-rowdel]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const rowId = btn.dataset.rowdel;
       const removedRow = d.rows.find(r => r.id === rowId);
-      d.rows = d.rows.filter(r => r.id !== rowId);
+      d.rows = d.rows.filter(r => r.id !== rowId);   // le compteur (counts) n'est pas touché
       renderChecklistTable();
       await persistCustomTab();
       if(removedRow){
@@ -2378,6 +2475,8 @@ if(btnAddPersonEverywhere) btnAddPersonEverywhere.addEventListener('click', addP
 (function(){
   const st = document.createElement('style');
   st.textContent = `
+    td.checklist-by{ width:130px; padding:0; }
+    td.checklist-by select{ width:100%; height:34px; border:none; background:transparent; text-align:center; text-align-last:center; font:inherit; font-weight:600; cursor:pointer; }
     .apptab-badge{ display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--danger,#A23B2E); margin-left:7px; vertical-align:middle; animation:avenantPulse 1.4s ease-in-out infinite; }
     @keyframes avenantPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.5); opacity:.55; } }
     .avenant-banner{ position:fixed; top:0; left:0; right:0; z-index:9999; display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; padding:10px 14px; background:var(--violet,#5b3fd1); color:#fff; font-size:14px; box-shadow:0 2px 10px rgba(0,0,0,.25); }
