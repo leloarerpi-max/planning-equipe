@@ -1299,6 +1299,60 @@ async function computeAndRenderStats(){
       urgencesShell.innerHTML = html3;
     }
   }
+
+  // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
+  try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+}
+
+async function renderAvenantsStats(){
+  const panel = document.getElementById('statsPanel');
+  if(!panel) return;
+  let shell = document.getElementById('statsAvenantsShell');
+  if(!shell){
+    const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Avenants WF par personne et par mois';
+    const hint = document.createElement('p'); hint.className = 'hint';
+    hint.textContent = "Nombre de lignes cochées « Fait » dans l'onglet Avenants WF, par la personne indiquée dans « Fait par ». Le compteur ne baisse pas quand des lignes sont supprimées.";
+    shell = document.createElement('div'); shell.id = 'statsAvenantsShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:460px;';
+    panel.appendChild(h); panel.appendChild(hint); panel.appendChild(shell);
+  }
+  shell.innerHTML = '';
+  const tabs = (typeof customTabs !== 'undefined' && Array.isArray(customTabs)) ? customTabs : [];
+  const monthly = {};   // mois -> { nom en minuscules -> nombre }
+  const display = {};   // nom en minuscules -> nom affiché
+  for(const tb of tabs){
+    const d = await storageGet(customTabKey(tb.id));
+    if(!d || d.type !== 'checklist' || !d.counts) continue;
+    Object.keys(d.counts).forEach(mk => {
+      Object.keys(d.counts[mk] || {}).forEach(n => {
+        const k = n.trim().toLowerCase();
+        if(!k) return;
+        if(!display[k]) display[k] = n.trim();
+        monthly[mk] = monthly[mk] || {};
+        monthly[mk][k] = (monthly[mk][k] || 0) + (Number(d.counts[mk][n]) || 0);
+      });
+    });
+  }
+  const mks = Object.keys(monthly).sort();
+  if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
+  const cols = people.map(p => ({k: p.name.trim().toLowerCase(), label: p.name}));
+  Object.keys(display).sort().forEach(k => { if(!cols.some(c => c.k === k)) cols.push({k, label: display[k]}); });
+  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+  cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  mks.forEach(mk => {
+    html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+    const vals = cols.map(c => monthly[mk][c.k] || 0);
+    const rowMax = Math.max(...vals, 0);
+    let tot = 0;
+    vals.forEach(v => {
+      tot += v;
+      const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+      html += `<td class="${cls}">${v || ''}</td>`;
+    });
+    html += `<td style="font-weight:700;">${tot}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  shell.innerHTML = html;
 }
 
 document.getElementById('btnExport').addEventListener('click', exportData);
