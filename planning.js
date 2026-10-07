@@ -1302,9 +1302,23 @@ async function computeAndRenderStats(){
 
   // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
   try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+  try{ moveRepartitionToBottom(); } catch(e){ /* simple réorganisation de l'affichage */ }
 }
 
-async function renderAvenantsStats(){
+/* Ordre du panneau : Échanges clients, Urgences, Avenants WF, puis « répartition des tâches » en dessous. */
+function moveRepartitionToBottom(){
+  const panel = document.getElementById('statsPanel');
+  if(!panel) return;
+  const title = panel.querySelector(':scope > h2');
+  if(!title || !/r[ée]partition/i.test(title.textContent)) return;   // déjà déplacé ou titre inattendu : on ne touche à rien
+  const hint = title.nextElementSibling && title.nextElementSibling.classList.contains('hint') ? title.nextElementSibling : null;
+  const totals = document.getElementById('statsTotals');
+  const table = document.getElementById('statsTableShell');
+  title.style.marginTop = '28px';
+  [title, hint, totals, table].forEach(el => { if(el) panel.appendChild(el); });
+}
+
+async function renderAvenantsStats(editMode){
   const panel = document.getElementById('statsPanel');
   if(!panel) return;
   let shell = document.getElementById('statsAvenantsShell');
@@ -1319,10 +1333,17 @@ async function renderAvenantsStats(){
   const tabs = (typeof customTabs !== 'undefined' && Array.isArray(customTabs)) ? customTabs : [];
   const monthly = {};   // mois -> { nom en minuscules -> nombre }
   const display = {};   // nom en minuscules -> nom affiché
+  let target = null;    // onglet corrigé en mode superviseur : « Avenants… » sinon le premier de type checklist
+  const loaded = [];
   for(const tb of tabs){
     const d = await storageGet(customTabKey(tb.id));
-    if(!d || d.type !== 'checklist' || !d.counts) continue;
-    Object.keys(d.counts).forEach(mk => {
+    if(!d || d.type !== 'checklist') continue;
+    loaded.push({tb, d});
+  }
+  const pick = loaded.find(x => /avenant/i.test(x.tb.name || '')) || loaded[0];
+  if(pick) target = pick.tb;
+  (editMode ? loaded.filter(x => x.tb === target) : loaded).forEach(({d}) => {
+    Object.keys(d.counts || {}).forEach(mk => {
       Object.keys(d.counts[mk] || {}).forEach(n => {
         const k = n.trim().toLowerCase();
         if(!k) return;
@@ -1331,28 +1352,98 @@ async function renderAvenantsStats(){
         monthly[mk][k] = (monthly[mk][k] || 0) + (Number(d.counts[mk][n]) || 0);
       });
     });
-  }
+  });
+  const nowD = new Date();
+  const nowKey = nowD.getFullYear() + '-' + String(nowD.getMonth()+1).padStart(2,'0');
+  if(editMode && !monthly[nowKey]) monthly[nowKey] = {};
   const mks = Object.keys(monthly).sort();
-  if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
   const cols = people.map(p => ({k: p.name.trim().toLowerCase(), label: p.name}));
   Object.keys(display).sort().forEach(k => { if(!cols.some(c => c.k === k)) cols.push({k, label: display[k]}); });
-  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
-  cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
-  html += '<th>Total</th></tr></thead><tbody>';
-  mks.forEach(mk => {
-    html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
-    const vals = cols.map(c => monthly[mk][c.k] || 0);
-    const rowMax = Math.max(...vals, 0);
-    let tot = 0;
-    vals.forEach(v => {
-      tot += v;
-      const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
-      html += `<td class="${cls}">${v || ''}</td>`;
+
+  const fixBar = document.createElement('div');
+  fixBar.style.cssText = 'margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;';
+  shell.parentNode.insertBefore(fixBar, shell.nextSibling);
+  document.querySelectorAll('#statsAvenantsFixBar').forEach(el => { if(el !== fixBar) el.remove(); });
+  fixBar.id = 'statsAvenantsFixBar';
+
+  if(!mks.length){
+    shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>';
+  } else if(!editMode){
+    let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+    cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
+    html += '<th>Total</th></tr></thead><tbody>';
+    mks.forEach(mk => {
+      html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+      const vals = cols.map(c => monthly[mk][c.k] || 0);
+      const rowMax = Math.max(...vals, 0);
+      let tot = 0;
+      vals.forEach(v => {
+        tot += v;
+        const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 ? 'stats-count-hi' : '');
+        html += `<td class="${cls}">${v || ''}</td>`;
+      });
+      html += `<td style="font-weight:700;">${tot}</td></tr>`;
     });
-    html += `<td style="font-weight:700;">${tot}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  shell.innerHTML = html;
+    html += '</tbody></table>';
+    shell.innerHTML = html;
+  }
+
+  if(editMode && target){
+    let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+    cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
+    html += '</tr></thead><tbody>';
+    mks.forEach(mk => {
+      html += `<tr data-mk="${mk}"><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+      cols.forEach(c => {
+        html += `<td><input type="number" min="0" step="1" data-k="${escapeHtml(c.k)}" value="${monthly[mk][c.k] || 0}" style="width:64px;text-align:center;" /></td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    shell.innerHTML = html;
+    fixBar.innerHTML = '<button class="btn" data-fix="save">💾 Enregistrer les corrections</button><button class="btn-ghost" data-fix="zero">Remettre tout à zéro</button><button class="btn-ghost" data-fix="cancel">Annuler</button><span class="hint" style="margin:0;">Mode correction (superviseur) : modifie les chiffres puis enregistre.</span>';
+    fixBar.querySelector('[data-fix="cancel"]').addEventListener('click', () => renderAvenantsStats(false));
+    fixBar.querySelector('[data-fix="zero"]').addEventListener('click', async () => {
+      if(!confirm('Remettre TOUS les compteurs Avenants WF à zéro ?')) return;
+      await saveAvenantCounts(target, () => ({}));
+      logChange('a remis à zéro les compteurs Avenants WF');
+      renderAvenantsStats(false);
+    });
+    fixBar.querySelector('[data-fix="save"]').addEventListener('click', async () => {
+      const fresh = {};
+      shell.querySelectorAll('tr[data-mk]').forEach(tr => {
+        tr.querySelectorAll('input[data-k]').forEach(inp => {
+          const v = Math.max(0, Math.round(Number(inp.value)) || 0);
+          if(!v) return;
+          const k = inp.dataset.k;
+          const label = (cols.find(c => c.k === k) || {}).label || k;
+          fresh[tr.dataset.mk] = fresh[tr.dataset.mk] || {};
+          fresh[tr.dataset.mk][label] = v;
+        });
+      });
+      if(!confirm('Enregistrer ces corrections pour toute l’équipe ?')) return;
+      await saveAvenantCounts(target, () => fresh);
+      logChange('a corrigé à la main les compteurs Avenants WF');
+      renderAvenantsStats(false);
+    });
+  } else if(target){
+    fixBar.innerHTML = '<button class="btn-ghost" data-fix="edit" title="Réservé au superviseur">✏️ Corriger les compteurs (superviseur)</button>';
+    fixBar.querySelector('[data-fix="edit"]').addEventListener('click', () => {
+      if(!isAdmin){ alert("Réservé au superviseur. Clique d'abord sur \"🔒 Mode superviseur\" et entre le mot de passe."); return; }
+      renderAvenantsStats(true);
+    });
+  } else {
+    fixBar.innerHTML = '';
+  }
+}
+async function saveAvenantCounts(tab, makeCounts){
+  try{
+    const res = await storageTransaction(customTabKey(tab.id), cur => {
+      if(!cur || cur.type !== 'checklist') return undefined;
+      return {...cur, counts: makeCounts(cur.counts || {})};
+    });
+    if(!res.committed) alert("Les corrections n'ont pas pu être enregistrées. Réessaie.");
+  } catch(e){ alert("Les corrections n'ont pas pu être enregistrées (connexion ?). Réessaie."); }
 }
 
 document.getElementById('btnExport').addEventListener('click', exportData);
