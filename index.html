@@ -603,7 +603,7 @@
 <script>
 (function(){
   var v = Date.now(); // change à chaque chargement de page : force le re-téléchargement
-  var scripts = ['shared.js', 'planning.js', 'customtabs.js', 'impaye.js']; // impaye.js en dernier : s'il manquait, le reste du site marcherait quand même
+  var scripts = ['shared.js', 'planning.js', 'customtabs.js', 'impaye.js', 'saisons.js']; // impaye.js puis saisons.js en dernier : s'ils manquaient, le reste du site marcherait quand même
   var i = 0;
   function loadNext(){
     if(i >= scripts.length) return;
