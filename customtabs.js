@@ -1591,6 +1591,7 @@ function checklistPeopleNames(extra){
   const list = [];
   try{ if(typeof people !== 'undefined' && Array.isArray(people)) people.forEach(p => { if(p && p.name) list.push(p.name); }); } catch(e){}
   [myName, extra].forEach(n => { if(n && !list.some(x => x.toLowerCase() === String(n).toLowerCase())) list.push(n); });
+  for(let i = list.length - 1; i >= 0; i--){ if(list[i] === AVENANT_NO_NAME && list[i] !== extra) list.splice(i, 1); }
   return list;
 }
 /* Modifie UNE ligne et le compteur en une seule transaction Firebase */
@@ -1598,9 +1599,12 @@ async function checklistMutateRow(rowId, mutator){
   const tabId = activeCustomTabId;
   setStatus2('customStatus', 'Enregistrement…', 'saving');
   try{
+    const local = activeCustomTabData;
     const res = await storageTransaction(customTabKey(tabId), cur => {
-      if(!cur || !Array.isArray(cur.rows)) return undefined;
-      const d = JSON.parse(JSON.stringify(cur));
+      // Firebase peut d'abord appeler avec une valeur vide : on part alors de la copie locale (il rejoue ensuite avec la vraie valeur si elle diffère)
+      const src = (cur && Array.isArray(cur.rows)) ? cur : local;
+      if(!src || !Array.isArray(src.rows)) return undefined;
+      const d = JSON.parse(JSON.stringify(src));
       d.counts = d.counts || {};
       const r = d.rows.find(x => x.id === rowId);
       if(!r) return undefined;
@@ -1608,7 +1612,7 @@ async function checklistMutateRow(rowId, mutator){
       return d;
     });
     if(res.committed && res.value && activeCustomTabId === tabId){ activeCustomTabData = res.value; }
-    setStatus2('customStatus', res.committed ? 'Enregistré' : '', '');
+    setStatus2('customStatus', res.committed ? 'Enregistré' : "Non enregistré — recharge la page et réessaie", res.committed ? '' : 'error');
     setTimeout(() => { const s = document.getElementById('customStatus'); if(s && s.textContent === 'Enregistré') s.textContent = ''; }, 1200);
     return res.committed;
   } catch(e){
@@ -1616,14 +1620,17 @@ async function checklistMutateRow(rowId, mutator){
     return false;
   }
 }
+const AVENANT_NO_NAME = 'Quelqu\u2019un';   // nom de remplacement du site quand aucun prénom n'est enregistré : jamais compté
 function checklistToggleDone(rowId, checked){
-  const who = checked ? ensureMyName() : '';
+  let who = '';
+  if(checked){ ensureMyName(); who = (myName && myName !== AVENANT_NO_NAME) ? myName : ''; }
+  if(checked && !who) alert("Ton prénom n'est pas enregistré sur ce poste : la ligne est cochée mais pas comptée.\n\nChoisis ton nom dans la colonne « Fait par » pour qu'elle soit comptée (et enregistre ton prénom avec « ✏️ Changer mon prénom affiché » dans le Journal du Planning).");
   return checklistMutateRow(rowId, (r, counts) => {
     if(checked){
       if(r.done) return;
       r.done = true;
       r.doneBy = who;
-      if(!r.countedBy){ r.countedBy = who; r.countedMonth = avenantMonthNow(); avenantCountAdd(counts, r.countedMonth, who, +1); }
+      if(who && !r.countedBy){ r.countedBy = who; r.countedMonth = avenantMonthNow(); avenantCountAdd(counts, r.countedMonth, who, +1); }
     } else {
       if(r.countedBy){ avenantCountAdd(counts, r.countedMonth, r.countedBy, -1); delete r.countedBy; delete r.countedMonth; }
       r.done = false;
