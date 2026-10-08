@@ -749,12 +749,74 @@ function updateCustomToolbarForType(){
   document.getElementById('btnExportSuivi').style.display = isSuivi ? '' : 'none';
   document.getElementById('btnConvertSuivi').style.display = isGeneric ? '' : 'none';
   ensureGenericToolbarButtons();
+  refreshOkKoButton(isGeneric);
   const genericBtnIds = ['btnGenericSaveTemplate','btnGenericExportExcel','btnGenericImportExcel','btnGenericStats'];
   genericBtnIds.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = isGeneric ? '' : 'none'; });
   if(!isGeneric){
     genericStatsOpen = false;
     const gsp = document.getElementById('genericStatsPanel');
     if(gsp) gsp.style.display = 'none';
+  }
+}
+/* --- Colonnes OK / KO (cases à cocher exclusives) juste après « Commentaires Julia » --- */
+function okKoAnchorColumn(d){
+  return (d && Array.isArray(d.columns)) ? d.columns.find(c => /commentaires?\s*julia/i.test(c.label || '')) : null;
+}
+function hasOkKoColumns(d){
+  return !!(d && Array.isArray(d.columns) && d.columns.some(c => c.exclusiveGroup === 'okko'));
+}
+function refreshOkKoButton(isGeneric){
+  let btn = document.getElementById('btnAddOkKo');
+  const d = activeCustomTabData;
+  const show = !!(isGeneric && okKoAnchorColumn(d) && !hasOkKoColumns(d));
+  if(!btn){
+    if(!show) return;
+    const anchor = document.getElementById('btnAddColumn');
+    if(!anchor || !anchor.parentElement) return;
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.id = 'btnAddOkKo';
+    btn.textContent = '✅ Ajouter les colonnes OK / KO';
+    btn.title = 'Ajoute deux colonnes à cocher, OK et KO, juste après « Commentaires Julia »';
+    anchor.parentElement.insertBefore(btn, anchor.nextSibling);
+    btn.addEventListener('click', addOkKoColumns);
+  }
+  btn.style.display = show ? '' : 'none';
+}
+async function addOkKoColumns(){
+  const tabId = activeCustomTabId;
+  const mk = (label, color) => ({id: cryptoId(), label, align:'center', color, width: 90, fontSize:null, cellType:'checkbox', exclusiveGroup:'okko'});
+  const colOk = mk('OK', '#DDEEDD'), colKo = mk('KO', '#F6D9D5');
+  setStatus2('customStatus', 'Enregistrement…', 'saving');
+  try{
+    const res = await storageTransaction(customTabKey(tabId), cur => {
+      if(!cur || !Array.isArray(cur.columns)) return undefined;
+      if(hasOkKoColumns(cur)) return undefined;                 // déjà présentes : rien à faire
+      const idx = cur.columns.findIndex(c => /commentaires?\s*julia/i.test(c.label || ''));
+      if(idx < 0) return undefined;
+      const columns = cur.columns.slice();
+      columns.splice(idx + 1, 0, colOk, colKo);
+      return {...cur, columns};
+    });
+    if(res.value && activeCustomTabId === tabId){
+      activeCustomTabData = res.value;
+      normalizeMealDataOnLoad(activeCustomTabData);
+      renderCustomTable();
+      updateCustomToolbarForType();
+    }
+    if(res.committed){
+      setStatus2('customStatus', 'Enregistré', '');
+      setTimeout(() => { const el = document.getElementById('customStatus'); if(el && el.textContent === 'Enregistré') el.textContent = ''; }, 1200);
+      const tabName = (customTabs.find(t => t.id === tabId) || {}).name || 'Vérif Julia';
+      logChange(`a ajouté les colonnes OK / KO dans « ${tabName} »`);
+    } else {
+      setStatus2('customStatus', '', '');
+      alert("Rien n'a été ajouté : les colonnes OK / KO existent déjà, ou la colonne « Commentaires Julia » est introuvable.");
+    }
+  } catch(e){
+    setStatus2('customStatus', "Échec de l'enregistrement — réessaie", 'error');
+    alert("Les colonnes n'ont pas pu être enregistrées (connexion ?). Rien n'a été modifié, réessaie.");
   }
 }
 /* --- Boutons de barre d'outils créés dynamiquement pour le tableau libre (modèle, import/export Excel) --- */
@@ -1150,7 +1212,14 @@ function renderCustomTable(){
         const row = d.rows.find(r => r.id === rowId);
         if(!row) return;
         row.cells[inp.dataset.colid] = inp.type === 'checkbox' ? inp.checked : inp.value;
-        if(inp.tagName === 'SELECT'){
+        let needRender = inp.tagName === 'SELECT';
+        if(inp.type === 'checkbox' && inp.checked){
+          const thisCol = d.columns.find(c => c.id === inp.dataset.colid);
+          if(thisCol && thisCol.exclusiveGroup){
+            d.columns.forEach(c => { if(c.id !== thisCol.id && c.exclusiveGroup === thisCol.exclusiveGroup && row.cells[c.id] === true){ row.cells[c.id] = false; needRender = true; } });
+          }
+        }
+        if(needRender){
           renderCustomTable();
         }
         await persistCustomTab();
