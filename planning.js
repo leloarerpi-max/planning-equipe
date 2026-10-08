@@ -1302,6 +1302,7 @@ async function computeAndRenderStats(){
 
   // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
   try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+  try{ await renderImpayeStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ moveRepartitionToBottom(); } catch(e){ /* simple réorganisation de l'affichage */ }
 }
 
@@ -1435,6 +1436,63 @@ async function renderAvenantsStats(editMode){
   } else {
     fixBar.innerHTML = '';
   }
+}
+/* Impayés par personne et par mois : somme des « Nombre » du Suivi impayé, rangée selon « Fait par » et le mois de la date de la ligne */
+async function renderImpayeStats(){
+  const panel = document.getElementById('statsPanel');
+  if(!panel) return;
+  let shell = document.getElementById('statsImpayeShell');
+  if(!shell){
+    const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Impayés par personne et par mois';
+    const hint = document.createElement('p'); hint.className = 'hint';
+    hint.textContent = "Somme des nombres saisis dans le Suivi impayé, par personne indiquée dans « Fait par » et par mois de la date de la ligne. « À faire » : lignes pas encore faites. « Sans nom » : lignes faites sans prénom.";
+    shell = document.createElement('div'); shell.id = 'statsImpayeShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:460px;';
+    panel.appendChild(h); panel.appendChild(hint); panel.appendChild(shell);
+  }
+  shell.innerHTML = '';
+  const v = await storageGet('po:impaye');
+  const rows = (v && Array.isArray(v.rows)) ? v.rows : [];
+  const monthly = {};   // mois -> { clé -> total }
+  const display = {};
+  const TODO = '\u0000todo', NONAME = '\u0000noname';
+  rows.forEach(r => {
+    const n = Number(r && r.count) || 0;
+    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec((r && r.date) || '');
+    if(!n || !m) return;
+    const mk = m[1] + '-' + m[2];
+    let k;
+    if(r.doneBy && String(r.doneBy).trim()){ k = String(r.doneBy).trim().toLowerCase(); if(!display[k]) display[k] = String(r.doneBy).trim(); }
+    else k = r.done ? NONAME : TODO;
+    monthly[mk] = monthly[mk] || {};
+    monthly[mk][k] = (monthly[mk][k] || 0) + n;
+  });
+  const mks = Object.keys(monthly).sort();
+  if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
+  const cols = people.map(p => ({k: p.name.trim().toLowerCase(), label: p.name}));
+  Object.keys(display).sort().forEach(k => { if(!cols.some(c => c.k === k)) cols.push({k, label: display[k]}); });
+  if(mks.some(mk => monthly[mk][NONAME])) cols.push({k: NONAME, label: 'Sans nom'});
+  if(mks.some(mk => monthly[mk][TODO])) cols.push({k: TODO, label: 'À faire'});
+  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+  cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  const colTotals = cols.map(() => 0); let grand = 0;
+  mks.forEach(mk => {
+    html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
+    const vals = cols.map(c => monthly[mk][c.k] || 0);
+    const rowMax = Math.max(...vals.filter((x, i) => cols[i].k !== TODO), 0);
+    let tot = 0;
+    vals.forEach((x, i) => {
+      tot += x; colTotals[i] += x;
+      const cls = x === 0 ? 'stats-count-0' : (x === rowMax && rowMax > 0 && cols[i].k !== TODO ? 'stats-count-hi' : '');
+      html += `<td class="${cls}">${x || ''}</td>`;
+    });
+    grand += tot;
+    html += `<td style="font-weight:700;">${tot}</td></tr>`;
+  });
+  html += '<tr style="font-weight:800;border-top:2px solid var(--ink);"><td class="stats-task-name">Total</td>';
+  colTotals.forEach(x => { html += `<td>${x || ''}</td>`; });
+  html += `<td>${grand}</td></tr></tbody></table>`;
+  shell.innerHTML = html;
 }
 async function saveAvenantCounts(tab, makeCounts){
   try{
