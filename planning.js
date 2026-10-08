@@ -1474,24 +1474,18 @@ async function renderImpayeStats(){
   if(mks.some(mk => monthly[mk][TODO])) cols.push({k: TODO, label: 'À faire'});
   let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
   cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
-  html += '<th>Total</th></tr></thead><tbody>';
-  const colTotals = cols.map(() => 0); let grand = 0;
+  html += '</tr></thead><tbody>';
   mks.forEach(mk => {
     html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk+'-01'))}</td>`;
     const vals = cols.map(c => monthly[mk][c.k] || 0);
     const rowMax = Math.max(...vals.filter((x, i) => cols[i].k !== TODO), 0);
-    let tot = 0;
     vals.forEach((x, i) => {
-      tot += x; colTotals[i] += x;
       const cls = x === 0 ? 'stats-count-0' : (x === rowMax && rowMax > 0 && cols[i].k !== TODO ? 'stats-count-hi' : '');
       html += `<td class="${cls}">${x || ''}</td>`;
     });
-    grand += tot;
-    html += `<td style="font-weight:700;">${tot}</td></tr>`;
+    html += '</tr>';
   });
-  html += '<tr style="font-weight:800;border-top:2px solid var(--ink);"><td class="stats-task-name">Total</td>';
-  colTotals.forEach(x => { html += `<td>${x || ''}</td>`; });
-  html += `<td>${grand}</td></tr></tbody></table>`;
+  html += '</tbody></table>';
   shell.innerHTML = html;
 }
 async function saveAvenantCounts(tab, makeCounts){
