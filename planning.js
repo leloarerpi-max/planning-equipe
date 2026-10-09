@@ -403,17 +403,76 @@ async function persistPeople(){ await storageSet(PEOPLE_KEY, people); }
 async function persistIndex(){ await storageSet(INDEX_KEY, daysIndex); }
 
 /* ---------- day bar ---------- */
+/* Archivage d'affichage : les jours de plus d'1 mois quittent la barre, SANS être supprimés.
+   Ils restent dans Firebase, restent comptés dans les statistiques, et s'ouvrent via « 📦 Jours archivés ». */
+let showAllDays = false;
+let archivePanelOpen = false;
+function archiveCutoffIso(){
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function archiveMonthLabel(key){
+  const d = new Date(key+'-01T00:00:00');
+  return d.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+}
 function renderDayBar(){
   const bar = document.getElementById('dayBar');
   const sorted = [...daysIndex].sort();
+  const cutoff = archiveCutoffIso();
+  // un jour archivé reste affiché dans la barre tant qu'il est ouvert
+  const isArchived = d => d < cutoff && d !== currentDate && !showAllDays;
+  const archived = sorted.filter(isArchived);
   let html = '';
   sorted.forEach(d => {
+    if(isArchived(d)) return;
     const delBtn = isAdmin ? `<button class="day-del" data-date-del="${d}" title="Supprimer ce jour">✕</button>` : '';
     html += `<span class="day-pill ${d===currentDate?'active':''}" data-date="${d}">${fmtDday(d)}${delBtn}</span>`;
   });
-  bar.innerHTML = html + '<button class="btn-newday" id="btnNewDay">+ Nouveau jour</button>';
+  const oldCount = sorted.filter(d => d < cutoff).length;
+  let archBtn = '';
+  if(oldCount){
+    archBtn = showAllDays
+      ? `<button class="btn-ghost" id="btnArchiveToggle" title="Ne garder que le dernier mois dans la barre">📦 Masquer les jours archivés</button>`
+      : `<button class="btn-ghost" id="btnArchiveToggle" title="Jours de plus d'un mois : conservés, comptés dans les statistiques, consultables">📦 Jours archivés (${archived.length})</button>`;
+  }
+  bar.innerHTML = html + archBtn + '<button class="btn-newday" id="btnNewDay">+ Nouveau jour</button>';
 
-  bar.querySelectorAll('.day-pill').forEach(pill => {
+  // panneau des jours archivés, sous la barre
+  let panel = document.getElementById('archivePanel');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'archivePanel';
+    panel.style.cssText = 'display:none; margin:-4px 0 14px; padding:10px 12px; background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); font-size:13px;';
+    bar.insertAdjacentElement('afterend', panel);
+  }
+  if(archived.length && archivePanelOpen && !showAllDays){
+    const byMonth = {};
+    archived.forEach(d => { (byMonth[d.slice(0,7)] = byMonth[d.slice(0,7)] || []).push(d); });
+    let ph = '<div style="color:var(--ink-soft);margin-bottom:8px;">Ces jours sont conservés et comptés dans les statistiques. Clique sur un jour pour l\u2019ouvrir.</div>';
+    Object.keys(byMonth).sort().reverse().forEach(m => {
+      ph += `<div style="margin:6px 0 2px;"><b>${archiveMonthLabel(m)}</b></div><div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+      byMonth[m].forEach(d => { ph += `<span class="day-pill" data-date="${d}">${fmtDday(d)}</span>`; });
+      ph += '</div>';
+    });
+    ph += '<div style="margin-top:10px;"><button class="btn-ghost" id="btnArchiveShowAll">Afficher tous les jours dans la barre</button></div>';
+    panel.innerHTML = ph;
+    panel.style.display = '';
+  } else {
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+  }
+  const btnArch = document.getElementById('btnArchiveToggle');
+  if(btnArch) btnArch.addEventListener('click', () => {
+    if(showAllDays){ showAllDays = false; archivePanelOpen = false; }
+    else { archivePanelOpen = !archivePanelOpen; }
+    renderDayBar();
+  });
+  const btnAll = document.getElementById('btnArchiveShowAll');
+  if(btnAll) btnAll.addEventListener('click', () => { showAllDays = true; archivePanelOpen = false; renderDayBar(); });
+
+  const dayPills = [...bar.querySelectorAll('.day-pill'), ...panel.querySelectorAll('.day-pill')];
+  dayPills.forEach(pill => {
     pill.addEventListener('click', async (e) => {
       if(e.target.classList.contains('day-del')) return;
       const d = pill.dataset.date;
@@ -421,6 +480,7 @@ function renderDayBar(){
       currentDate = d;
       dayData = await loadDayData(currentDate);
       attachDayListener(currentDate);
+      archivePanelOpen = false;
       renderAll();
     });
   });
