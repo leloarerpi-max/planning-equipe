@@ -1324,6 +1324,103 @@ function mealCellClass(val){
   if(v.startsWith('13')) return 'meal-13';
   return '';
 }
+/* --- Repli des mois (Planning Repas et Planning Tel) ---------------------------------
+   Chaque mois a une ligne-titre cliquable ▾ / ▸. Par défaut, les mois PASSÉS sont repliés,
+   le mois en cours et les suivants sont dépliés. Le choix est PARTAGÉ : il est enregistré dans
+   les données de l'onglet (d.foldedMonths) et tout le monde le voit en temps réel. Il ne
+   touche ni aux dates ni aux saisies. Dans un mois replié, le total du mois (Planning Repas)
+   reste visible. */
+function foldIsCollapsed(map, monthKey){
+  if(Object.prototype.hasOwnProperty.call(map, monthKey)) return !!map[monthKey];
+  return monthKey < todayIso().slice(0, 7);   // pas de choix enregistré : mois passé = replié
+}
+function applyMonthFolding(shell, d){
+  const tbody = shell.querySelector('table tbody');
+  if(!tbody) return;
+  const dayDate = {};
+  (d.days || []).forEach(x => { dayDate[x.id] = x.date; });
+  const rows = Array.from(tbody.querySelectorAll(':scope > tr'));
+  const months = rows.map(tr => {
+    const inp = tr.querySelector('input[data-day]');
+    if(inp && dayDate[inp.dataset.day]) return dayDate[inp.dataset.day].slice(0, 7);
+    if(tr.dataset.monthkey) return tr.dataset.monthkey;
+    return null;
+  });
+  for(let i = months.length - 2; i >= 0; i--){ if(!months[i] && months[i + 1]) months[i] = months[i + 1]; }   // « Semaine du … » : mois de la ligne suivante
+  if(!months.some(Boolean)) return;
+  const tabId = activeCustomTabId;
+  const getMap = () => d.foldedMonths || {};
+  const colspan = (shell.querySelectorAll('table thead th').length) || 2;
+  const groups = {};
+  rows.forEach((tr, i) => { const m = months[i]; if(!m) return; tr.dataset.month = m; (groups[m] = groups[m] || []).push(tr); });
+
+  function paint(){
+    Object.keys(groups).forEach(m => {
+      const collapsed = foldIsCollapsed(getMap(), m);
+      groups[m].forEach(tr => { tr.classList.toggle('month-folded', collapsed); });
+      const head = tbody.querySelector(`tr.month-toggle-row[data-monthtoggle="${m}"]`);
+      if(head){
+        head.classList.toggle('is-collapsed', collapsed);
+        head.querySelector('.month-toggle-arrow').textContent = collapsed ? '▸' : '▾';
+        head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+    });
+  }
+  // écrit le choix pour tout le monde : affichage immédiat ici, puis enregistrement sans toucher au reste de l'onglet
+  async function foldSetShared(changes){
+    d.foldedMonths = {...getMap(), ...changes};
+    paint();
+    try{
+      await storageTransaction(customTabKey(tabId), cur => {
+        if(!cur) return undefined;
+        return {...cur, foldedMonths: {...(cur.foldedMonths || {}), ...changes}};
+      });
+    } catch(e){ setStatus2('customStatus', "Repli non enregistré pour les autres — réessaie", 'error'); }
+  }
+  Object.keys(groups).forEach(m => {
+    const first = groups[m][0];
+    const dayCount = groups[m].filter(tr => tr.querySelector('input[data-day]')).length;
+    const head = document.createElement('tr');
+    head.className = 'month-toggle-row';
+    head.dataset.monthtoggle = m;
+    head.tabIndex = 0;
+    head.innerHTML = `<td colspan="${colspan}"><span class="month-toggle-arrow"></span> <b>${escapeHtml(mealMonthLabel(m + '-01'))}</b> <span class="month-toggle-count">${dayCount} jour${dayCount > 1 ? 's' : ''}</span></td>`;
+    const toggle = () => foldSetShared({[m]: !foldIsCollapsed(getMap(), m)});
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); } });
+    tbody.insertBefore(head, first);
+  });
+  // « Tout déplier / Tout replier »
+  const bar = document.createElement('div');
+  bar.className = 'month-fold-bar';
+  bar.innerHTML = '<button type="button" class="btn-ghost" data-fold="open">▾ Tout déplier</button> <button type="button" class="btn-ghost" data-fold="close">▸ Tout replier</button>';
+  bar.addEventListener('click', e => {
+    const b = e.target.closest('[data-fold]');
+    if(!b) return;
+    const changes = {};
+    Object.keys(groups).forEach(m => { changes[m] = (b.dataset.fold === 'close'); });
+    foldSetShared(changes);
+  });
+  shell.insertBefore(bar, shell.firstChild);
+  paint();
+}
+(function(){
+  if(document.getElementById('month-fold-style')) return;
+  const st = document.createElement('style');
+  st.id = 'month-fold-style';
+  st.textContent = `
+    tr.month-toggle-row td{ background:var(--violet-bg); color:var(--ink); padding:8px 12px; cursor:pointer; font-size:13.5px; border-top:1px solid var(--line-strong); user-select:none; }
+    tr.month-toggle-row:hover td{ background:var(--ochre-bg); }
+    tr.month-toggle-row:focus-visible td{ outline:2px solid var(--violet); outline-offset:-2px; }
+    .month-toggle-arrow{ display:inline-block; width:14px; color:var(--violet); }
+    .month-toggle-count{ color:var(--ink-soft); font-size:12px; margin-left:8px; }
+    tr.month-folded:not(.meal-month-summary){ display:none; }
+    .month-fold-bar{ padding:6px 10px; font-size:12px; border-bottom:1px solid var(--line); }
+    .month-fold-bar .btn-ghost{ font-size:12px; }
+  `;
+  document.head.appendChild(st);
+})();
+
 function mealMonthLabel(iso){
   const d = new Date(iso+'T00:00:00');
   return d.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
@@ -1433,6 +1530,7 @@ function renderMealPlanningGrid(){
       });
     });
   });
+  applyMonthFolding(shell, d);
   wireMealNav(shell);
 }
 function updateMealMonthSummaryInPlace(shell, dayId){
@@ -1455,16 +1553,19 @@ function updateMealMonthSummaryInPlace(shell, dayId){
   });
 }
 function wireMealNav(shell){
-  const inputs = Array.from(shell.querySelectorAll('td.meal-cell input'));
-  inputs.forEach((inp, idx) => {
+  const all = Array.from(shell.querySelectorAll('td.meal-cell input'));
+  const visible = () => all.filter(i => i.offsetParent !== null);   // ignore les lignes de mois repliés
+  all.forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if(e.key === 'ArrowDown' || e.key === 'Enter'){
         e.preventDefault();
-        const next = inputs[idx+1];
+        const list = visible(), idx = list.indexOf(inp);
+        const next = list[idx+1];
         if(next){ next.focus(); next.select(); }
       } else if(e.key === 'ArrowUp'){
         e.preventDefault();
-        const prev = inputs[idx-1];
+        const list = visible(), idx = list.indexOf(inp);
+        const prev = list[idx-1];
         if(prev){ prev.focus(); prev.select(); }
       }
     });
@@ -2024,19 +2125,23 @@ function renderPhonePlanningGrid(){
       });
     });
   });
+  applyMonthFolding(shell, d);
   wirePhoneNav(shell);
 }
 function wirePhoneNav(shell){
-  const inputs = Array.from(shell.querySelectorAll('td.phone-cell input'));
-  inputs.forEach((inp, idx) => {
+  const all = Array.from(shell.querySelectorAll('td.phone-cell input'));
+  const visible = () => all.filter(i => i.offsetParent !== null);   // ignore les lignes de mois repliés
+  all.forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if(e.key === 'ArrowDown' || e.key === 'Enter'){
         e.preventDefault();
-        const next = inputs[idx+1];
+        const list = visible(), idx = list.indexOf(inp);
+        const next = list[idx+1];
         if(next){ next.focus(); next.select(); }
       } else if(e.key === 'ArrowUp'){
         e.preventDefault();
-        const prev = inputs[idx-1];
+        const list = visible(), idx = list.indexOf(inp);
+        const prev = list[idx-1];
         if(prev){ prev.focus(); prev.select(); }
       }
     });
