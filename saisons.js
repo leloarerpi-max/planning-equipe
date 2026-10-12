@@ -12,17 +12,38 @@
   const LS_KEY = 'po-season';
 
   /* --- saison d'après la date (hémisphère nord) --------------------------- */
+  /* Pâques (calcul grégorien) : dimanche de Pâques de l'année donnée */
+  function easterSunday(year){
+    const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  }
+  /* Ordre de priorité : fêtes ponctuelles d'abord, puis la saison */
   function seasonFromDate(d){
     const md = (d.getMonth() + 1) * 100 + d.getDate();
     if(md >= 1201 && md <= 1225) return 'christmas';   // Noël : du 1er au 25 décembre
+    if(md >= 1226 || md <= 103) return 'newyear';       // Nouvel An : du 26 décembre au 3 janvier
+    if(md >= 207 && md <= 214) return 'valentine';      // Saint-Valentin : du 7 au 14 février
+    const day0 = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const easter = easterSunday(d.getFullYear());
+    const diff = Math.round((day0 - easter) / 86400000);
+    if(diff >= -7 && diff <= 1) return 'easter';        // Pâques : la semaine avant le dimanche, jusqu'au lundi
     if(md >= 1020 && md <= 1031) return 'halloween';   // Halloween : du 20 au 31 octobre
+    if(md >= 1001 && md <= 1019) return 'pink';         // Octobre rose : du 1er au 19 octobre
+    if(md >= 708 && md <= 714) return 'bastille';       // Fête nationale : du 8 au 14 juillet
+    if(md >= 901 && md <= 915) return 'rentree';        // Rentrée : du 1er au 15 septembre
     if(md >= 320 && md <= 620) return 'spring';
     if(md >= 621 && md <= 922) return 'summer';
     if(md >= 923 && md <= 1220) return 'autumn';
     return 'winter';
   }
-  const NAMES = { autumn: 'Automne', winter: 'Hiver', spring: 'Printemps', summer: 'Été', halloween: 'Halloween', christmas: 'Noël', none: 'Sans décor' };
-  const ICONS = { autumn: '🍂', winter: '❄️', spring: '🌸', summer: '☀️', halloween: '🎃', christmas: '🎄', none: '🎨' };
+  const NAMES = { autumn: 'Automne', winter: 'Hiver', spring: 'Printemps', summer: 'Été', halloween: 'Halloween', christmas: 'Noël',
+    pink: 'Octobre rose', valentine: 'Saint-Valentin', easter: 'Pâques', newyear: 'Nouvel An', rentree: 'Rentrée', bastille: '14 juillet', none: 'Sans décor' };
+  const ICONS = { autumn: '🍂', winter: '❄️', spring: '🌸', summer: '☀️', halloween: '🎃', christmas: '🎄',
+    pink: '🎀', valentine: '💝', easter: '🐣', newyear: '🎆', rentree: '🎒', bastille: '🎇', none: '🎨' };
 
   /* --- palettes ------------------------------------------------------------ */
   const THEMES = {
@@ -60,6 +81,42 @@
       paper: '#F5EFE4', line: '#E3D8C6', lineStrong: '#C2AF8E',
       gradTop: '#FAF4E9', gradBottom: '#EBE0CC',
       bar: ['#B3312B', '#2F6F4F', '#D9A93E'],
+      opacity: 0.20
+    },
+    pink: {
+      paper: '#FAEEF2', line: '#EBD3DC', lineStrong: '#D3A5B8',
+      gradTop: '#FDF3F6', gradBottom: '#F5DAE4',
+      bar: ['#E0518A', '#F29BBB', '#B5336A'],
+      opacity: 0.22
+    },
+    valentine: {
+      paper: '#FAEEEE', line: '#EBD0D2', lineStrong: '#D3A0A6',
+      gradTop: '#FDF2F2', gradBottom: '#F5D9DC',
+      bar: ['#C8283E', '#F08CA0', '#8E1B33'],
+      opacity: 0.20
+    },
+    easter: {
+      paper: '#F6F4E8', line: '#E3DEC4', lineStrong: '#BFB98A',
+      gradTop: '#FAF9EE', gradBottom: '#ECEFD6',
+      bar: ['#F2D16B', '#A9D6A0', '#C9B3E6'],
+      opacity: 0.24
+    },
+    newyear: {
+      paper: '#F7F1E1', line: '#E6DBBC', lineStrong: '#C9B77F',
+      gradTop: '#FBF6E8', gradBottom: '#EFE3C4',
+      bar: ['#1F2A5A', '#D9A93E', '#8A9BD6'],
+      opacity: 0.22
+    },
+    rentree: {
+      paper: '#F2F2EA', line: '#DEDECB', lineStrong: '#B9BA95',
+      gradTop: '#F8F8EF', gradBottom: '#E8EAD4',
+      bar: ['#2F6FB0', '#E8A33D', '#C7452F'],
+      opacity: 0.20
+    },
+    bastille: {
+      paper: '#F2F2F6', line: '#D9DBE6', lineStrong: '#A9AECB',
+      gradTop: '#F7F8FC', gradBottom: '#E1E4F0',
+      bar: ['#2B4C9B', '#E4E6F0', '#D32F3F'],
       opacity: 0.20
     }
   };
@@ -109,6 +166,31 @@
   function ornament(x, y, sc, c){
     return `<g transform="translate(${x} ${y}) scale(${sc})"><circle r="9" fill="${c}"/><rect x="-3" y="-13" width="6" height="5" fill="#D9A93E"/><path d="M-5,-3 C-3,-6 0,-7 2,-6" stroke="#ffffff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round" fill="none"/></g>`;
   }
+  function heart(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><path d="M0,12 C-20,-2 -13,-16 0,-7 C13,-16 20,-2 0,12Z" fill="${c}"/></g>`;
+  }
+  function ribbon(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})" fill="none" stroke="${c}" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"><path d="M0,-18 C-14,-18 -14,2 0,9 C14,2 14,-18 0,-18Z"/><path d="M0,9 L-10,24 M0,9 L10,24"/></g>`;
+  }
+  function egg(x, y, rot, sc, c, band){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><path d="M0,-17 C11,-17 14,4 14,8 C14,16 8,20 0,20 C-8,20 -14,16 -14,8 C-14,4 -11,-17 0,-17Z" fill="${c}"/><path d="M-13,6 L-7,1 L-2,6 L3,1 L8,6 L13,2" stroke="${band}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>`;
+  }
+  function confetti(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><circle cx="-8" cy="-6" r="2.6" fill="${c}"/><rect x="4" y="-8" width="9" height="3.4" rx="1.4" fill="${c}"/><circle cx="2" cy="8" r="2.2" fill="${c}"/><rect x="-12" y="6" width="8" height="3.2" rx="1.4" fill="${c}" transform="rotate(35 -8 7)"/></g>`;
+  }
+  function pencil(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><rect x="-4" y="-22" width="8" height="30" fill="${c}"/><polygon points="-4,8 4,8 0,18" fill="#D9B27C"/><rect x="-4" y="-26" width="8" height="5" fill="#C7452F"/></g>`;
+  }
+  function notebook(x, y, rot, sc, c){
+    return `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})"><rect x="-13" y="-16" width="26" height="32" rx="3" fill="${c}"/><path d="M-6,-8H7M-6,-1H7M-6,6H7" stroke="#ffffff" stroke-opacity=".7" stroke-width="2" stroke-linecap="round"/></g>`;
+  }
+  function burst(x, y, sc, c){
+    let rays = '';
+    for(let i = 0; i < 10; i++){
+      rays += `<path d="M0,-7V-17" stroke="${c}" stroke-width="2.4" stroke-linecap="round" transform="rotate(${i * 36})"/>`;
+    }
+    return `<g transform="translate(${x} ${y}) scale(${sc})">${rays}<circle r="2.6" fill="${c}"/></g>`;
+  }
   function tile(season){
     let inner = '';
     if(season === 'autumn'){
@@ -126,6 +208,24 @@
     } else if(season === 'christmas'){
       inner = tree(42, 48, 0, 1, '#2F6F4F') + star(170, 30, 15, .9, '#D9A93E') + ornament(112, 124, 1, '#B3312B')
             + flake(222, 148, 0, .9, '#D9A93E') + tree(54, 206, 0, .85, '#2F6F4F') + ornament(160, 226, .9, '#B3312B');
+    } else if(season === 'pink'){
+      inner = ribbon(44, 48, -10, 1, '#E0518A') + heart(170, 30, 12, .6, '#F29BBB') + ribbon(112, 124, 8, .8, '#F29BBB')
+            + heart(222, 150, -10, .7, '#E0518A') + ribbon(54, 206, 12, .9, '#E0518A') + heart(160, 226, 8, .6, '#F29BBB');
+    } else if(season === 'valentine'){
+      inner = heart(42, 48, -12, 1, '#C8283E') + heart(170, 30, 14, .7, '#F08CA0') + heart(112, 124, 6, 1.1, '#C8283E')
+            + heart(222, 150, -14, .8, '#F08CA0') + heart(52, 206, 12, .9, '#C8283E') + heart(160, 226, -6, .7, '#F08CA0');
+    } else if(season === 'easter'){
+      inner = egg(42, 48, -10, 1, '#F2B8CE', '#ffffff') + flower(170, 30, 10, .8, '#F4C6D1', '#F2D16B') + egg(112, 124, 8, 1.1, '#B9DDF2', '#F2D16B')
+            + flower(222, 150, 0, .8, '#C9B3E6', '#F2D16B') + egg(54, 206, 12, .9, '#CDE5A8', '#ffffff') + egg(160, 226, -8, .85, '#F6DC8E', '#ffffff');
+    } else if(season === 'newyear'){
+      inner = star(42, 48, 10, 1, '#D9A93E') + confetti(170, 30, 20, 1, '#1F2A5A') + star(112, 124, 0, .8, '#8A9BD6')
+            + confetti(222, 150, -30, .9, '#D9A93E') + star(54, 206, 20, .9, '#1F2A5A') + confetti(160, 226, 40, 1, '#8A9BD6');
+    } else if(season === 'rentree'){
+      inner = pencil(44, 48, 30, 1, '#E8A33D') + notebook(170, 32, 8, .8, '#2F6FB0') + pencil(112, 124, -25, 1.1, '#2F6FB0')
+            + notebook(222, 150, -10, .8, '#E8A33D') + pencil(54, 206, 50, .9, '#2F6FB0') + notebook(160, 226, 6, .8, '#C7452F');
+    } else if(season === 'bastille'){
+      inner = burst(44, 48, 1, '#2B4C9B') + star(170, 30, 10, .8, '#D32F3F') + burst(112, 124, 1.2, '#D32F3F')
+            + star(222, 150, 0, .8, '#2B4C9B') + burst(54, 206, .9, '#D32F3F') + star(160, 226, 18, .8, '#2B4C9B');
     } else {
       inner = sun(44, 46, 1, '#F2B93B') + wave(150, 34, '#4FB3BF') + sun(118, 124, 1.1, '#F2B93B')
             + wave(190, 150, '#4FB3BF') + wave(24, 206, '#4FB3BF') + sun(170, 224, .9, '#F2B93B');
@@ -171,6 +271,8 @@
     #seasonBtn:hover{ border-color:var(--violet); }
     #seasonMenu{ position:fixed; left:12px; bottom:56px; z-index:41; background:var(--panel); border:1px solid var(--line-strong);
       border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.2); padding:6px; display:none; min-width:190px; }
+    #seasonMenu{ max-height:70vh; overflow-y:auto; }
+    #seasonMenu .season-sep{ padding:8px 10px 3px; font-size:11px; letter-spacing:.4px; text-transform:uppercase; color:var(--ink-soft); }
     #seasonMenu.open{ display:block; }
     #seasonMenu button{ display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:none; background:none;
       padding:7px 10px; font:inherit; font-size:13px; color:var(--ink); cursor:pointer; border-radius:5px; }
@@ -200,9 +302,12 @@
     btn.title = choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`;
     const items = [['auto', `${ICONS[seasonFromDate(new Date())]} Automatique (selon la date)`],
       ['autumn', `${ICONS.autumn} Automne`], ['winter', `${ICONS.winter} Hiver`], ['spring', `${ICONS.spring} Printemps`],
-      ['summer', `${ICONS.summer} Été`], ['halloween', `${ICONS.halloween} Halloween`], ['christmas', `${ICONS.christmas} Noël`],
+      ['summer', `${ICONS.summer} Été`], ['sep', 'Fêtes et événements'],
+      ['pink', `${ICONS.pink} Octobre rose`], ['halloween', `${ICONS.halloween} Halloween`], ['christmas', `${ICONS.christmas} Noël`],
+      ['newyear', `${ICONS.newyear} Nouvel An`], ['valentine', `${ICONS.valentine} Saint-Valentin`], ['easter', `${ICONS.easter} Pâques`],
+      ['rentree', `${ICONS.rentree} Rentrée`], ['bastille', `${ICONS.bastille} 14 juillet`],
       ['none', `${ICONS.none} Sans décor`]];
-    menu.innerHTML = items.map(([k, label]) => `<button type="button" data-season="${k}" class="${k === choice ? 'current' : ''}">${label}${k === choice ? ' ✓' : ''}</button>`).join('');
+    menu.innerHTML = items.map(([k, label]) => k === 'sep' ? `<div class="season-sep">${label}</div>` : `<button type="button" data-season="${k}" class="${k === choice ? 'current' : ''}">${label}${k === choice ? ' ✓' : ''}</button>`).join('');
   }
   btn.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('open'); });
   menu.addEventListener('click', e => {
