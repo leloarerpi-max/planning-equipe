@@ -363,6 +363,7 @@
     #seasonMenu button:hover{ background:var(--violet-bg); }
     #seasonMenu button.current{ font-weight:700; }
     #seasonMenu button:disabled{ opacity:.45; cursor:not-allowed; }
+    #seasonMenu button[data-impose=auto]{ white-space:normal; font-weight:600; }
     #seasonMenu .season-note{ padding:6px 10px; font-size:12px; color:var(--ink-soft); max-width:230px; }
     #birthdayBanner{ display:flex; align-items:center; gap:10px; margin:0 0 12px; padding:10px 14px; border-radius:8px;
       background:linear-gradient(90deg,#FFE3EC,#FFF1C9); border:1px solid #F0B7C8; color:#7A2342; font-weight:600; font-size:15px; }
@@ -394,7 +395,9 @@
     return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
   }
   function forcedActive(){
-    if(!forced || (forced.season !== 'auto' && !THEMES[forced.season])) return null;
+    if(!forced) return { season: 'auto', until: '' };           // par défaut : décor automatique pour toute l'équipe
+    if(forced.season === 'free') return null;                   // le superviseur a rendu le choix libre
+    if(forced.season !== 'auto' && !THEMES[forced.season]) return { season: 'auto', until: '' };
     if(forced.until && todayIso() > forced.until) return null;   // expiré
     return forced;
   }
@@ -420,8 +423,8 @@
     const f = forcedActive();
     let h = '';
     if(menuMode === 'impose'){
-      h += '<div class="season-sep">Imposer à toute l’équipe</div>';
-      h += `<button type="button" data-impose="auto">🔄 Automatique (selon la date) — pour tous</button>` + SAISONS.concat(FETES).map(k => `<button type="button" data-impose="${k}">${ICONS[k]} ${NAMES[k]}</button>`).join('');
+      h += '<div class="season-sep">Décor précis avec date de fin</div>';
+      h += SAISONS.concat(FETES).map(k => `<button type="button" data-impose="${k}">${ICONS[k]} ${NAMES[k]}</button>`).join('');
       h += '<button type="button" data-act="back">← Retour</button>';
       menu.innerHTML = h;
       return;
@@ -436,8 +439,9 @@
     h += `<button type="button" data-season="none" class="${choice === 'none' ? 'current' : ''}">${ICONS.none} Sans décor${choice === 'none' ? ' ✓' : ''}</button>`;
     if(adminNow()){
       h += '<div class="season-sep">Superviseur</div>';
-      h += '<button type="button" data-act="impose">📌 Imposer un décor à l’équipe…</button>';
-      if(f) h += '<button type="button" data-act="unforce">✖ Retirer le décor imposé</button>';
+      h += '<button type="button" data-impose="auto">📌 Imposer le décor AUTOMATIQUE à l’équipe (change selon les dates)</button>';
+      h += '<button type="button" data-act="impose">📌 Imposer un décor précis (avec date de fin)…</button>';
+      if(f) h += '<button type="button" data-act="unforce">✖ Rendre le choix libre à l’équipe</button>';
       h += '<button type="button" data-act="birthdays">🎂 Gérer les anniversaires…</button>';
     }
     menu.innerHTML = h;
@@ -465,7 +469,7 @@
     const ok = await storageSet(FORCED_KEY, { season: key, until: until, by: (typeof myName !== 'undefined' && myName) || '' });
     if(!ok) alert('Impossible d’enregistrer (connexion ?). Réessayez.');
   }
-  async function unforceSeason(){ await storageDelete(FORCED_KEY); }
+  async function unforceSeason(){ await storageSet(FORCED_KEY, { season: 'free' }); }
 
   btn.addEventListener('click', e => { e.stopPropagation(); menuMode = 'main'; renderMenu(); menu.classList.toggle('open'); });
   menu.addEventListener('click', e => {
