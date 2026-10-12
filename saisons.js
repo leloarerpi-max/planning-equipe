@@ -394,14 +394,14 @@
     return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
   }
   function forcedActive(){
-    if(!forced || !THEMES[forced.season]) return null;
+    if(!forced || (forced.season !== 'auto' && !THEMES[forced.season])) return null;
     if(forced.until && todayIso() > forced.until) return null;   // expiré
     return forced;
   }
   function activeSeason(){
     if(choice === 'none') return 'none';          // "Sans décor" personnel reste respecté
     const f = forcedActive();
-    if(f) return f.season;
+    if(f) return f.season === 'auto' ? seasonFromDate(new Date()) : f.season;
     return choice === 'auto' ? seasonFromDate(new Date()) : choice;
   }
   function adminNow(){ try{ return typeof isAdmin !== 'undefined' && !!isAdmin; } catch(e){ return false; } }
@@ -421,12 +421,12 @@
     let h = '';
     if(menuMode === 'impose'){
       h += '<div class="season-sep">Imposer à toute l’équipe</div>';
-      h += SAISONS.concat(FETES).map(k => `<button type="button" data-impose="${k}">${ICONS[k]} ${NAMES[k]}</button>`).join('');
+      h += `<button type="button" data-impose="auto">🔄 Automatique (selon la date) — pour tous</button>` + SAISONS.concat(FETES).map(k => `<button type="button" data-impose="${k}">${ICONS[k]} ${NAMES[k]}</button>`).join('');
       h += '<button type="button" data-act="back">← Retour</button>';
       menu.innerHTML = h;
       return;
     }
-    if(f) h += `<div class="season-note">📌 Décor imposé par le superviseur : ${ICONS[f.season]} ${NAMES[f.season]}${f.until ? ' (jusqu’au ' + frDate(f.until) + ')' : ''}</div>`;
+    if(f) h += `<div class="season-note">📌 Décor imposé par le superviseur : ${f.season === 'auto' ? '🔄 Automatique (selon la date)' : ICONS[f.season] + ' ' + NAMES[f.season]}${f.until ? ' (jusqu’au ' + frDate(f.until) + ')' : ''}</div>`;
     const dis = f ? ' disabled' : '';
     const item = (k, label) => `<button type="button" data-season="${k}"${dis} class="${k === choice ? 'current' : ''}">${label}${k === choice ? ' ✓' : ''}</button>`;
     h += item('auto', `${ICONS[seasonFromDate(new Date())]} Automatique (selon la date)`);
@@ -449,14 +449,17 @@
     document.documentElement.setAttribute('data-season', s);
     btn.textContent = ICONS[s] || '🎨';
     const f = forcedActive();
-    btn.title = (f && choice !== 'none') ? `Décor imposé : ${NAMES[s]}` : (choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`);
+    btn.title = (f && choice !== 'none') ? `Décor imposé${f.season === 'auto' ? ' (automatique)' : ''} : ${NAMES[s]}` : (choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`);
     renderMenu();
   }
 
   function fbRef(key){ return fbDb.ref(dbPath(key)); }
   async function imposeSeason(key){
-    let until = prompt('Jusqu’à quelle date imposer ce décor ?\nFormat AAAA-MM-JJ (ex. 2026-12-26).\nLaisser vide = jusqu’à ce que vous le retiriez.', '');
-    if(until === null) return;
+    let until = '';
+    if(key !== 'auto'){
+      until = prompt('Jusqu’à quelle date imposer ce décor ?\nFormat AAAA-MM-JJ (ex. 2026-12-26).\nLaisser vide = jusqu’à ce que vous le retiriez.', '');
+      if(until === null) return;
+    }
     until = until.trim();
     if(until && !/^\d{4}-\d{2}-\d{2}$/.test(until)){ alert('Date non reconnue. Utilisez le format AAAA-MM-JJ.'); return; }
     const ok = await storageSet(FORCED_KEY, { season: key, until: until, by: (typeof myName !== 'undefined' && myName) || '' });
