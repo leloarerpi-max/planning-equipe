@@ -1363,6 +1363,7 @@ async function computeAndRenderStats(){
   // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
   try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ await renderImpayeStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+  try{ await renderUrgCiesStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ moveRepartitionToBottom(); } catch(e){ /* simple réorganisation de l'affichage */ }
 }
 
@@ -1377,6 +1378,171 @@ function moveRepartitionToBottom(){
   const table = document.getElementById('statsTableShell');
   title.style.marginTop = '28px';
   [title, hint, totals, table].forEach(el => { if(el) panel.appendChild(el); });
+}
+
+/* ==========================================================================
+   Urgences compagnies par conseiller et par jour (import du fichier URGENCES_CIES.xlsx)
+   - On lit UNIQUEMENT l'onglet visible « GESTION EASY + PREMIUM (Pierrick) ».
+   - On compte les lignes par date (colonne A) et par personne de l'équipe (colonne I).
+   - Les chiffres sont aussi écrits dans « Urgences » de chaque jour du Planning.
+   - Seuls les totaux par jour sont gardés (Firebase : po:urgences-cies), pas les lignes.
+   ========================================================================== */
+const URGCIES_KEY = 'po:urgences-cies';
+function urgNameKey(raw){
+  return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+function urgPretty(raw){
+  const t = String(raw).replace(/\s+/g, ' ').trim().toLowerCase();
+  return t.replace(/(^|[\s'-])([a-zàâäéèêëîïôöùûüç])/g, (m, p, c) => p + c.toUpperCase());
+}
+function urgIsoFromCell(v){
+  if(v == null || v === '') return null;
+  let y, m, d;
+  if(v instanceof Date){ y = v.getFullYear(); m = v.getMonth() + 1; d = v.getDate(); }
+  else if(typeof v === 'number'){
+    const dc = XLSX.SSF.parse_date_code(v);
+    if(!dc) return null;
+    y = dc.y; m = dc.m; d = dc.d;
+  } else return null;
+  const maxY = new Date().getFullYear() + 1;
+  if(!(y >= 2023 && y <= maxY)) return null;
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+function urgParseWorkbook(wb){
+  const metas = (wb.Workbook && wb.Workbook.Sheets) || [];
+  const cands = [];
+  wb.SheetNames.forEach((nm, i) => {
+    const hidden = metas[i] && metas[i].Hidden;
+    if(!hidden && /^\s*gestion/i.test(nm)) cands.push(nm);
+  });
+  if(!cands.length) return {error: "Je ne trouve pas d'onglet visible « GESTION EASY + PREMIUM ». Onglets du fichier : " + wb.SheetNames.join(' | ')};
+  let best = null;
+  cands.forEach(nm => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nm], {header: 1, raw: true, defval: null});
+    let latest = '';
+    rows.forEach(r => { const iso = urgIsoFromCell(r[0]); if(iso && iso > latest) latest = iso; });
+    if(!best || latest > best.latest) best = {nm, rows, latest};
+  });
+  const days = {}, names = {};
+  let n = 0, skipped = 0;
+  best.rows.forEach(r => {
+    const iso = urgIsoFromCell(r[0]);
+    if(!iso) return;
+    const raw = r[8];   // colonne I : la personne de l'équipe qui a traité l'urgence
+    const key = urgNameKey(raw);
+    if(!key || key === 'none' || /\d/.test(key)){ skipped++; return; }
+    const pretty = urgPretty(raw);
+    if(!names[key] || (/[^\x00-\x7f]/.test(pretty) && !/[^\x00-\x7f]/.test(names[key]))) names[key] = pretty;
+    days[iso] = days[iso] || {};
+    days[iso][key] = (days[iso][key] || 0) + 1;
+    n++;
+  });
+  return {sheet: best.nm, days, names, count: n, skipped};
+}
+async function urgImportFile(file){
+  if(typeof XLSX === 'undefined'){ alert("La lecture d'Excel n'est pas disponible (connexion ?)."); return; }
+  let parsed;
+  try{
+    const buf = await file.arrayBuffer();
+    parsed = urgParseWorkbook(XLSX.read(buf, {type: 'array'}));
+  } catch(e){ alert("Impossible de lire ce fichier Excel."); return; }
+  if(parsed.error){ alert(parsed.error); return; }
+  const nbDays = Object.keys(parsed.days).length;
+  const dflt = new Date(Date.now() - 30 * 86400000);
+  const dfltIso = dflt.getFullYear() + '-' + String(dflt.getMonth() + 1).padStart(2, '0') + '-' + String(dflt.getDate()).padStart(2, '0');
+  let fromIso = prompt('Écrire les urgences dans le Planning à partir de quelle date ?\nFormat AAAA-MM-JJ (ex. 2026-09-14). Les jours avant cette date ne sont pas modifiés dans le Planning.', dfltIso);
+  if(fromIso === null) return;
+  fromIso = fromIso.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fromIso)){ alert('Date non reconnue. Utilisez le format AAAA-MM-JJ.'); return; }
+  if(!nbDays){ alert("Aucune urgence trouvée (colonne A = date, colonne E = conseiller)."); return; }
+  const res = await storageTransaction(URGCIES_KEY, cur => {
+    const o = cur && cur.days ? cur : {days: {}, names: {}};
+    Object.keys(parsed.days).forEach(iso => { o.days[iso] = parsed.days[iso]; });   // un jour présent dans le fichier remplace l'ancien
+    Object.keys(parsed.names).forEach(k => { o.names[k] = parsed.names[k]; });
+    o.updated = new Date().toISOString();
+    o.sheet = parsed.sheet;
+    return o;
+  });
+  // Écrit aussi dans le panneau « Urgences » de chaque jour du Planning (jours existants, personnes reconnues)
+  const byKey = {};
+  people.forEach(p => { byKey[urgNameKey(p.name)] = p.id; });
+  const unknown = new Set();
+  let written = 0;
+  const isoDays = Object.keys(parsed.days).filter(d => d >= fromIso && daysIndex.includes(d));
+  for(const iso of isoDays){
+    const counts = {};
+    Object.keys(parsed.days[iso]).forEach(k => { if(byKey[k]) counts[byKey[k]] = parsed.days[iso][k]; else unknown.add(parsed.names[k] || k); });
+    if(!Object.keys(counts).length) continue;
+    try{
+      await storageTransaction(dayKey(iso), cur => {
+        if(!cur || !cur.tasks) return undefined;
+        cur.urgences = cur.urgences || {};
+        Object.keys(counts).forEach(id => { cur.urgences[id] = counts[id]; });
+        return cur;
+      });
+      delete dayCache[iso]; delete dayBase[iso];
+      written++;
+    } catch(e){ /* on continue avec les autres jours */ }
+  }
+  Object.keys(parsed.days).forEach(iso => { if(!daysIndex.includes(iso)) Object.keys(parsed.days[iso]).forEach(k => { if(!byKey[k]) unknown.add(parsed.names[k] || k); }); });
+  try{ dayData = await loadDayData(currentDate, {force: true}); renderTable(); } catch(e){}
+  logChange(`a importé le fichier des urgences (${parsed.count} urgences, ${written} jours du planning mis à jour)`);
+  alert(`Import terminé : ${parsed.count} urgences lues sur ${nbDays} jours.\n${written} jour(s) du Planning mis à jour.` + (unknown.size ? `\nNoms non trouvés dans l'équipe (ignorés dans le Planning) : ${Array.from(unknown).join(', ')}` : ''));
+  await renderUrgCiesStats();
+}
+let urgCiesMonth = '';
+async function renderUrgCiesStats(){
+  const panel = document.getElementById('statsPanel');
+  if(!panel) return;
+  let shell = document.getElementById('statsUrgCiesShell');
+  if(!shell){
+    const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Urgences du fichier par personne et par jour';
+    const hint = document.createElement('p'); hint.className = 'hint';
+    hint.textContent = "Calculé à partir du fichier URGENCES_CIES.xlsx (onglet GESTION EASY + PREMIUM) : une urgence = une ligne, comptée à sa date pour la personne indiquée en colonne I.";
+    const bar = document.createElement('div'); bar.id = 'statsUrgCiesBar'; bar.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;';
+    shell = document.createElement('div'); shell.id = 'statsUrgCiesShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:520px;';
+    panel.appendChild(h); panel.appendChild(hint); panel.appendChild(bar); panel.appendChild(shell);
+  }
+  const bar = document.getElementById('statsUrgCiesBar');
+  const data = await storageGet(URGCIES_KEY);
+  const days = (data && data.days) || {};
+  const names = (data && data.names) || {};
+  const months = Array.from(new Set(Object.keys(days).map(d => d.slice(0, 7)))).sort().reverse();
+  if(!urgCiesMonth || !months.includes(urgCiesMonth)) urgCiesMonth = months[0] || '';
+  bar.innerHTML = '';
+  const imp = document.createElement('button'); imp.className = 'btn'; imp.textContent = '📥 Importer le fichier des urgences';
+  const fi = document.createElement('input'); fi.type = 'file'; fi.accept = '.xlsx,.xls'; fi.style.display = 'none';
+  imp.addEventListener('click', () => { if(typeof isAdmin === 'undefined' || !isAdmin){ alert('Réservé au superviseur (bouton « Mode superviseur »).'); return; } fi.click(); });
+  fi.addEventListener('change', async () => { const f = fi.files && fi.files[0]; fi.value = ''; if(f) await urgImportFile(f); });
+  bar.appendChild(imp); bar.appendChild(fi);
+  if(months.length){
+    const sel = document.createElement('select');
+    sel.innerHTML = months.map(m => `<option value="${m}" ${m === urgCiesMonth ? 'selected' : ''}>${escapeHtml(mealMonthLabel(m + '-01'))}</option>`).join('');
+    sel.addEventListener('change', () => { urgCiesMonth = sel.value; renderUrgCiesStats(); });
+    bar.appendChild(sel);
+    if(data.updated){ const sp = document.createElement('span'); sp.className = 'hint'; sp.style.margin = '0'; sp.textContent = 'Dernier import : ' + new Date(data.updated).toLocaleString('fr-FR'); bar.appendChild(sp); }
+  }
+  if(!months.length){ shell.innerHTML = '<div class="empty-note">Aucun fichier importé pour l’instant.</div>'; return; }
+  const dayList = Object.keys(days).filter(d => d.startsWith(urgCiesMonth)).sort().reverse();
+  const tot = {};
+  dayList.forEach(d => Object.keys(days[d]).forEach(k => { tot[k] = (tot[k] || 0) + days[d][k]; }));
+  const cols = Object.keys(tot).sort((a, b) => tot[b] - tot[a] || a.localeCompare(b));
+  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Jour</th>';
+  cols.forEach(k => { html += `<th>${escapeHtml(names[k] || k)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  dayList.forEach(d => {
+    const vals = cols.map(k => days[d][k] || 0);
+    const mx = Math.max(...vals, 0);
+    html += `<tr><td class="stats-task-name">${escapeHtml(toFr(d))}</td>`;
+    let t = 0;
+    vals.forEach(v => { t += v; html += `<td class="${v === 0 ? 'stats-count-0' : (v === mx && mx > 0 ? 'stats-count-hi' : '')}">${v || ''}</td>`; });
+    html += `<td style="font-weight:700;">${t}</td></tr>`;
+  });
+  let grand = 0;
+  html += '<tr style="font-weight:700;"><td class="stats-task-name">Total du mois</td>';
+  cols.forEach(k => { grand += tot[k]; html += `<td>${tot[k]}</td>`; });
+  html += `<td>${grand}</td></tr></tbody></table>`;
+  shell.innerHTML = html;
 }
 
 async function renderAvenantsStats(editMode){
