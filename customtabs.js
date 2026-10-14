@@ -16,6 +16,10 @@ let customTabListenerRef = null;
 let customSortState = { colId: null, dir: null };  // tri d'affichage uniquement, non enregistré
 let customSearchTerm = '';                          // recherche d'affichage uniquement, non enregistrée
 let genericStatsOpen = false;                       // panneau "Statistiques par personne et par mois" (tableau libre)
+let showReprisRows = false;                          // lignes « REPRIS » : masquées par défaut (non supprimées), affichables à la demande
+let showDoneRows = false;                           // lignes « OK » (traitées) : repliées par défaut (non supprimées), affichables à la demande
+function okDoneColumn(d){ return (d && Array.isArray(d.columns)) ? d.columns.find(c => c.exclusiveGroup === 'okko' && c.cellType === 'checkbox' && /^\s*ok\s*$/i.test(c.label || '')) : null; }
+function reprisColumn(d){ return (d && Array.isArray(d.columns)) ? d.columns.find(c => (c.cellType === 'checkbox') && /^\s*repris\s*$/i.test(c.label || '')) : null; }
 
 /* --- Alerte « nouveau fichier Excel déposé » (Avenants WF) : état --- */
 const AVENANT_NOTIF_KEY = 'po:avenant-notif';
@@ -693,6 +697,8 @@ async function switchAppTab(tabId){
   customSortState = { colId: null, dir: null };
   customSearchTerm = '';
   genericStatsOpen = false;
+  showReprisRows = false;
+  showDoneRows = false;
   const gsp0 = document.getElementById('genericStatsPanel');
   if(gsp0) gsp0.style.display = 'none';
   if(avenantBadgeTabId === tabId) avenantBadgeTabId = null;
@@ -1099,10 +1105,23 @@ function renderCustomTable(){
   const hasNumberCol = d.columns.some(c => c.cellType === 'number');
   let displayRows = sortRowsForDisplay(d, customSortState);
   if(customSearchTerm) displayRows = displayRows.filter(r => rowMatchesSearch(d, r, customSearchTerm));
+  const reprisCol = reprisColumn(d);
+  const reprisTotal = reprisCol ? d.rows.filter(r => r.cells[reprisCol.id] === true).length : 0;
+  if(reprisCol && !showReprisRows) displayRows = displayRows.filter(r => r.cells[reprisCol.id] !== true);   // masquées, jamais supprimées
+  const okCol = okDoneColumn(d);
+  const doneTotal = okCol ? d.rows.filter(r => r.cells[okCol.id] === true).length : 0;
+  let doneCount = 0;
+  if(okCol){
+    const isDone = r => r.cells[okCol.id] === true;
+    if(!showDoneRows && !customSearchTerm){ displayRows = displayRows.filter(r => !isDone(r)); }          // repliées, jamais supprimées
+    else { doneCount = displayRows.filter(isDone).length; displayRows = displayRows.filter(r => !isDone(r)).concat(displayRows.filter(isDone)); }   // traitées en bas
+  }
 
   let html = `<div class="custom-search-bar">
     <input type="text" id="customSearchInput" placeholder="🔎 Rechercher dans ce tableau…" value="${escapeHtml(customSearchTerm)}" />
     ${customSearchTerm ? `<span class="custom-search-count">${displayRows.length} / ${d.rows.length} ligne(s)</span>` : ''}
+    ${okCol ? `<button type="button" class="btn-ghost" id="btnToggleDone" title="Les lignes cochées « OK » sont repliées, pas supprimées">${showDoneRows ? '📦 Replier les lignes traitées' : '📦 Afficher les lignes traitées'} (${doneTotal})</button>` : ''}
+    ${reprisCol ? `<button type="button" class="btn-ghost" id="btnToggleRepris" title="Les lignes cochées « REPRIS » sont masquées, pas supprimées">${showReprisRows ? '🙈 Masquer les lignes reprises' : '👁 Afficher les lignes reprises'} (${reprisTotal})</button>` : ''}
   </div>`;
 
   html += '<table class="custom-table"><colgroup>';
@@ -1129,8 +1148,13 @@ function renderCustomTable(){
   if(!displayRows.length){
     html += `<tr><td colspan="${d.columns.length+1}" style="padding:18px;text-align:center;color:var(--ink-soft);">${customSearchTerm ? 'Aucune ligne ne correspond à la recherche' : 'Aucune ligne'}</td></tr>`;
   }
+  let doneSepDone = false;
   displayRows.forEach(row => {
-    html += `<tr data-rowid="${row.id}">`;
+    if(okCol && doneCount && !doneSepDone && row.cells[okCol.id] === true){
+      doneSepDone = true;
+      html += `<tr class="done-sep"><td colspan="${d.columns.length+1}" style="padding:8px 12px;background:var(--violet-bg);font-weight:700;color:var(--ink-soft);">📦 Lignes traitées (OK) — ${doneCount}</td></tr>`;
+    }
+    html += `<tr data-rowid="${row.id}"${reprisCol && row.cells[reprisCol.id] === true ? ' class="row-repris"' : ''}>`;
     d.columns.forEach((col, idx) => {
       let cellHtml = buildCustomCellHtml(col, row);
       if(idx === 0){
@@ -1161,6 +1185,11 @@ function renderCustomTable(){
   }
   html += '</table>';
   shell.innerHTML = html;
+
+  const btnDone = document.getElementById('btnToggleDone');
+  if(btnDone) btnDone.addEventListener('click', () => { showDoneRows = !showDoneRows; renderCustomTable(); });
+  const btnRepris = document.getElementById('btnToggleRepris');
+  if(btnRepris) btnRepris.addEventListener('click', () => { showReprisRows = !showReprisRows; renderCustomTable(); });
 
   const searchInput = document.getElementById('customSearchInput');
   if(searchInput){
@@ -1219,10 +1248,42 @@ function renderCustomTable(){
             d.columns.forEach(c => { if(c.id !== thisCol.id && c.exclusiveGroup === thisCol.exclusiveGroup && row.cells[c.id] === true){ row.cells[c.id] = false; needRender = true; } });
           }
         }
+        let justReprise = false;
+        if(inp.type === 'checkbox' && inp.checked){
+          const rc = reprisColumn(d);
+          if(rc && rc.id === inp.dataset.colid && !showReprisRows){ justReprise = true; needRender = true; }
+        }
+        let justDone = false;
+        if(inp.type === 'checkbox' && inp.checked){
+          const oc = okDoneColumn(d);
+          if(oc && oc.id === inp.dataset.colid && !showDoneRows && !customSearchTerm){ justDone = true; needRender = true; }
+        }
         if(needRender){
           renderCustomTable();
         }
         await persistCustomTab();
+        if(justDone){
+          const okId = inp.dataset.colid;
+          logChange(`a coché « OK » sur une ligne de « ${(customTabs.find(t => t.id === activeCustomTabId) || {}).name || 'Vérif'} » (repliée, non supprimée)`);
+          showUndoToast('Ligne traitée : repliée, pas supprimée', async () => {
+            const r2 = d.rows.find(r => r.id === rowId);
+            if(!r2) return;
+            r2.cells[okId] = false;
+            renderCustomTable();
+            await persistCustomTab();
+          });
+        }
+        if(justReprise){
+          const rcId = inp.dataset.colid;
+          logChange(`a coché « Repris » sur une ligne de « ${(customTabs.find(t => t.id === activeCustomTabId) || {}).name || 'Vérif'} » (masquée, non supprimée)`);
+          showUndoToast('Ligne reprise : masquée, pas supprimée', async () => {
+            const r2 = d.rows.find(r => r.id === rowId);
+            if(!r2) return;
+            r2.cells[rcId] = false;
+            renderCustomTable();
+            await persistCustomTab();
+          });
+        }
       });
     });
   });
@@ -1415,6 +1476,8 @@ function applyMonthFolding(shell, d){
     .month-toggle-arrow{ display:inline-block; width:14px; color:var(--violet); }
     .month-toggle-count{ color:var(--ink-soft); font-size:12px; margin-left:8px; }
     tr.month-folded:not(.meal-month-summary){ display:none; }
+    tr.row-repris td{ opacity:.55; }
+    tr.done-sep td{ border-top:2px solid var(--line-strong); }
     .month-fold-bar{ padding:6px 10px; font-size:12px; border-bottom:1px solid var(--line); }
     .month-fold-bar .btn-ghost{ font-size:12px; }
   `;
