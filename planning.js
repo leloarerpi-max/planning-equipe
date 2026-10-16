@@ -668,10 +668,10 @@ function taskRowHtml(t, isGroupStart){
   const priorityTitle = 'Couleur : ' + PRIORITY_LABELS[t.priority || ''] + ' (cliquer pour changer)';
 
   return `<tr class="task-row ${rowCls}${isGroupStart ? ' group-start' : ''}" data-task="${t.id}">
-    <td class="task-name">
+    <td class="task-name"><div class="tn-in">
       <button type="button" class="priority-dot" data-action="cycle-priority" title="${priorityTitle}" style="background:${priorityDot};" ${dis}></button>
-      <input type="text" value="${escapeHtml(t.name)}" data-field="name" ${dis} />
-    </td>
+      <input type="text" value="${escapeHtml(t.name)}" title="${escapeHtml(t.name)}" data-field="name" ${dis} />
+    </div></td>
     ${peopleCells}
     ${statusNombreCells}
     <td>${(editable && isAdmin) ? `<button class="remove-x" data-action="remove-task" title="Supprimer">✕</button>` : ''}</td>
@@ -1364,6 +1364,7 @@ async function computeAndRenderStats(){
   // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
   try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ await renderImpayeStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+  try{ await renderMedStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ moveRepartitionToBottom(); } catch(e){ /* simple réorganisation de l'affichage */ }
 }
 
@@ -1614,6 +1615,60 @@ async function renderAvenantsStats(editMode){
   }
 }
 /* Impayés par personne et par mois : somme des « Nombre » du Suivi impayé, rangée selon « Fait par » et le mois de la date de la ligne */
+/* Mises en demeure par personne et par mois : somme des « Nombre » de la tâche « Mise en demeure »
+   sur tous les jours du Planning, partagée entre les personnes assignées (comme les Échanges clients). */
+async function renderMedStats(){
+  const panel = document.getElementById('statsPanel');
+  if(!panel) return;
+  let shell = document.getElementById('statsMedShell');
+  if(!shell){
+    const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Mises en demeure par personne et par mois';
+    const hint = document.createElement('p'); hint.className = 'hint';
+    hint.textContent = "Le chiffre saisi dans « Nombre » sur la tâche « Mise en demeure », depuis le début du Planning, partagé entre les personnes assignées quand elles sont plusieurs. « Non attribué » : jours où personne n'était assigné à la tâche.";
+    shell = document.createElement('div'); shell.id = 'statsMedShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:460px;';
+    panel.appendChild(h); panel.appendChild(hint); panel.appendChild(shell);
+  }
+  shell.innerHTML = '';
+  const isMed = n => /^mises?\s+en\s+demeure\b/.test(String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase());
+  const NOONE = '\u0000none';
+  const monthly = {};
+  const all = await Promise.all(daysIndex.map(async d => ({date: d, data: await loadDayData(d)})));
+  all.forEach(({date, data}) => {
+    const mk = date.slice(0, 7);
+    ((data && data.tasks) || []).forEach(t => {
+      if(!isMed(t.name)) return;
+      const n = Number(t.objectif) || 0;
+      if(!n) return;
+      const ids = (t.personIds || []).filter(pid => people.some(p => p.id === pid));
+      monthly[mk] = monthly[mk] || {};
+      if(!ids.length){ monthly[mk][NOONE] = (monthly[mk][NOONE] || 0) + n; return; }
+      ids.forEach(pid => { monthly[mk][pid] = (monthly[mk][pid] || 0) + n / ids.length; });
+    });
+  });
+  const mks = Object.keys(monthly).sort();
+  if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
+  const cols = people.map(p => ({k: p.id, label: p.name}));
+  if(mks.some(mk => monthly[mk][NOONE])) cols.push({k: NOONE, label: 'Non attribué'});
+  const r1 = x => Math.round(x * 10) / 10;
+  let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
+  cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  mks.forEach(mk => {
+    html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk + '-01'))}</td>`;
+    const vals = cols.map(c => r1(monthly[mk][c.k] || 0));
+    const rowMax = Math.max(...vals.filter((x, i) => cols[i].k !== NOONE), 0);
+    let tot = 0;
+    vals.forEach((v, i) => {
+      tot += v;
+      const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 && cols[i].k !== NOONE ? 'stats-count-hi' : '');
+      html += `<td class="${cls}">${v || ''}</td>`;
+    });
+    html += `<td style="font-weight:700;">${r1(tot)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  shell.innerHTML = html;
+}
+
 async function renderImpayeStats(){
   const panel = document.getElementById('statsPanel');
   if(!panel) return;
