@@ -297,7 +297,9 @@ async function init(){
 
     daysIndex = [...daysIndex].sort();
 
-    if(!daysIndex.includes(today)){
+    const todayDow = new Date(today + 'T00:00:00').getDay();   // 0 = dimanche, 6 = samedi
+    const isWeekendToday = (todayDow === 0 || todayDow === 6);
+    if(!daysIndex.includes(today) && !isWeekendToday){
       // Nouvelle journée : création ATOMIQUE. Si un collègue l'a déjà créée (et commencé à y saisir),
       // on n'y touche pas — l'ancienne version écrasait ses saisies.
       const latest = latestDayDate();
@@ -310,7 +312,8 @@ async function init(){
       dayData = await loadDayData(today, {force:true});
       if(created.committed) logChange(`nouvelle journée créée automatiquement (${toFr(today)})`);
     } else {
-      currentDate = today;
+      // Week-end : on ne crée pas de nouveau jour automatiquement (on ouvre le dernier jour existant)
+      currentDate = daysIndex.includes(today) ? today : latestDayDate();
       dayData = await loadDayData(currentDate, {force:true});
     }
 
