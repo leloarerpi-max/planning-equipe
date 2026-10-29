@@ -3,7 +3,7 @@
    Chargé APRÈS saisons.js (voir index.html). S'il manquait ou plantait, le reste du
    site continuerait de fonctionner. Ne modifie AUCUNE donnée du planning.
 
-   - Le bandeau n'apparaît que du 1er décembre au 10 janvier (le superviseur peut
+   - Le bandeau n’apparaît que du 27 novembre au 1er janvier (le superviseur peut
      le voir toute l'année et simuler une date pour tester).
    - Un épisode par jour. Les épisodes du samedi et du dimanche s'ouvrent le lundi
      (comme prévu dans le roman) : le lundi, trois épisodes d'un coup.
@@ -58,16 +58,22 @@
     if(dow === 0) return new Date(year, 11, n + 1);
     return d;
   }
+  const TEASER_DAY = 27;   // le bandeau apparaît dès le 27 novembre (enveloppes encore scellées) pour faire monter l'attente
   function inWindow(t){
     const y = seasonYear(t);
-    return t >= new Date(y, 11, 1) && t <= new Date(y + 1, 0, 10);
+    return t >= new Date(y, 10, TEASER_DAY) && t <= new Date(y + 1, 0, 1);
+  }
+  function daysToStart(t){ return Math.round((new Date(seasonYear(t), 11, 1) - t) / 86400000); }
+  function teaserText(t){
+    const d = daysToStart(t);
+    return d > 1 ? `— première enveloppe dans ${d} jours` : (d === 1 ? '— première enveloppe demain !' : '— ouverture le 1er décembre');
   }
   function simOptions(sim){
     const n = new Date();
     const y = n.getMonth() === 0 ? n.getFullYear() - 1 : n.getFullYear();
     const cur = sim ? isoOf(sim) : '';
     let o = `<option value="">— date réelle —</option>`;
-    for(let d = new Date(y, 10, 30); d <= new Date(y, 11, 27); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
+    for(let d = new Date(y, 10, TEASER_DAY); d <= new Date(y, 11, 27); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
       const v = isoOf(d);
       o += `<option value="${v}"${v === cur ? ' selected' : ''}>${frDay(d)}</option>`;
     }
@@ -225,7 +231,7 @@
     const preview = adm && !inWindow(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) ? ' <span class="av-chip">aperçu superviseur</span>' : '';
 
     if(!open){
-      host.innerHTML = `<div class="av-bar" id="avBar">🔍 <b>Calendrier de l’avent</b><small>${nbToRead ? '— ' + nbToRead + ' épisode' + (nbToRead > 1 ? 's' : '') + ' à lire' : (nbUnlocked ? '— vous êtes à jour' : '— ouverture le 1er décembre')}</small>${preview}<span class="av-sp"></span>${nbToRead ? `<span class="av-chip o">${nbToRead} nouveau${nbToRead > 1 ? 'x' : ''}</span>` : ''}<span class="av-chip">${nbRead} / 24 lus</span><span class="av-go">▼ Déplier</span></div>`;
+      host.innerHTML = `<div class="av-bar" id="avBar">🔍 <b>Calendrier de l’avent</b><small>${nbToRead ? '— ' + nbToRead + ' chapitre' + (nbToRead > 1 ? 's' : '') + ' à lire' : (nbUnlocked ? '— vous êtes à jour' : teaserText(t))}</small>${preview}<span class="av-sp"></span>${nbToRead ? `<span class="av-chip o">${nbToRead} nouveau${nbToRead > 1 ? 'x' : ''}</span>` : ''}<span class="av-chip">${nbRead} / 24 lus</span><span class="av-go">▼ Déplier</span></div>`;
       host.querySelector('#avBar').addEventListener('click', () => { open = true; ls.set(LS_OPEN, '1'); render(); });
       return;
     }
@@ -244,7 +250,7 @@
     });
     const voteOpen = canVote(sts);
     const showKeys = !!DATA.keys && t >= new Date(seasonYear(t), 11, 25);
-    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <span class="av-btn" id="avSimPrev" title="Jour précédent">◀</span><select id="avSim">${simOptions(sim)}</select><span class="av-btn" id="avSimNext" title="Jour suivant">▶</span> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
+    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${nbUnlocked ? '' : `<span class="av-chip o">${esc(teaserText(t).replace(/^— /, ''))}</span>`}${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <span class="av-btn" id="avSimPrev" title="Jour précédent">◀</span><select id="avSim">${simOptions(sim)}</select><span class="av-btn" id="avSimNext" title="Jour suivant">▶</span> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
     host.querySelector('#avFold').addEventListener('click', () => { open = false; ls.set(LS_OPEN, '0'); render(); });
     host.querySelectorAll('.c').forEach(c => c.addEventListener('click', () => onEnvelope(Number(c.dataset.n))));
     host.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.p)));
