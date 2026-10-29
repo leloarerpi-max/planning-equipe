@@ -62,6 +62,17 @@
     const y = seasonYear(t);
     return t >= new Date(y, 11, 1) && t <= new Date(y + 1, 0, 10);
   }
+  function simOptions(sim){
+    const n = new Date();
+    const y = n.getMonth() === 0 ? n.getFullYear() - 1 : n.getFullYear();
+    const cur = sim ? isoOf(sim) : '';
+    let o = `<option value="">— date réelle —</option>`;
+    for(let d = new Date(y, 10, 30); d <= new Date(y, 11, 27); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
+      const v = isoOf(d);
+      o += `<option value="${v}"${v === cur ? ' selected' : ''}>${frDay(d)}</option>`;
+    }
+    return o;
+  }
   function frDay(d){
     const j = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][d.getDay()];
     const m = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()];
@@ -83,14 +94,14 @@
   /* --- styles ---------------------------------------------------------------- */
   const css = `
 #avent{margin:0 0 16px;font-family:'IBM Plex Sans',system-ui,sans-serif}
-#avent .av-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line-strong);border-left:4px solid var(--danger);border-radius:var(--radius);padding:10px 14px;cursor:pointer}
+#avent .av-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:linear-gradient(90deg,#FFFDF7,#F8F1E2);border:1px solid #D4A537;border-left:4px solid #C8372D;border-radius:var(--radius);padding:10px 14px;cursor:pointer}
 #avent .av-bar b{font-family:Georgia,'Times New Roman',serif;font-size:16px;color:var(--ink)}
 #avent .av-bar small{color:var(--ink-soft);font-size:12.5px}
 #avent .av-sp{flex:1}
-#avent .av-chip{font-size:12px;font-weight:600;color:var(--violet);background:var(--violet-bg);border-radius:12px;padding:3px 10px}
-#avent .av-chip.o{color:var(--ochre);background:var(--ochre-bg)}
+#avent .av-chip{font-size:12px;font-weight:600;color:#1F4D35;background:#E1EEDF;border-radius:12px;padding:3px 10px}
+#avent .av-chip.o{color:#9C2420;background:#F8DCD6}
 #avent .av-go{font-size:12.5px;color:var(--ink-soft)}
-#avent .av-board{background:var(--panel);border:1px solid var(--line-strong);border-left:4px solid var(--danger);border-radius:var(--radius);padding:0 0 14px;position:relative;overflow:hidden}
+#avent .av-board{background:linear-gradient(180deg,#FFFDF7,#F8F1E2);border:1px solid #D4A537;border-left:4px solid #C8372D;border-radius:var(--radius);padding:0 0 14px;position:relative;overflow:hidden}
 #avent .av-lights{display:block;width:100%;height:30px}
 #avent .av-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 18px 4px}
 #avent .av-head h3{margin:0;font-family:Georgia,serif;font-size:19px}
@@ -98,29 +109,30 @@
 #avent .av-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:16px 14px;padding:16px 18px 6px;position:relative}
 #avent .c{position:relative;height:74px;transform:rotate(var(--r));cursor:pointer}
 #avent .c.locked{cursor:default}
-#avent .pin{position:absolute;left:50%;top:-5px;width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--danger) 55%,#6e2218);transform:translateX(-50%);z-index:3;box-shadow:0 1px 2px rgba(0,0,0,.4)}
-#avent .e{position:absolute;inset:4px 0 0 0;border-radius:var(--radius);border:1.5px solid var(--violet);background:var(--violet-bg);overflow:hidden;box-shadow:0 2px 5px rgba(0,0,0,.15)}
+#avent .pin{position:absolute;left:50%;top:-5px;width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFF4C8,#D4A537 55%,#7a5a12);transform:translateX(-50%);z-index:3;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+#avent .e{position:absolute;inset:4px 0 0 0;border-radius:var(--radius);border:1.5px solid #D4A537;background:linear-gradient(160deg,#2E6B4A,#1F4D35);overflow:hidden;box-shadow:0 2px 5px rgba(0,0,0,.15)}
 #avent .e svg{position:absolute;left:0;top:0;width:100%;height:62%}
-#avent .e .n{position:absolute;left:0;right:0;bottom:6px;text-align:center;font:700 19px Georgia,serif;color:var(--violet)}
+#avent .e .n{position:absolute;left:0;right:0;bottom:6px;text-align:center;font:700 19px Georgia,serif;color:#F3D27A;text-shadow:0 1px 0 rgba(0,0,0,.35)}
 #avent .e .lk{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);font-size:13px;opacity:.7}
-#avent .c.read .e{background:var(--ochre-bg);border-color:var(--ochre)}
-#avent .c.read .e .n{color:var(--ochre);font-size:17px}
+#avent .c.read .e{background:linear-gradient(160deg,#FBF3DF,#F1E2BC);border-color:#D4A537}
+#avent .c.read .e .n{color:#9C2F2A;font-size:17px;text-shadow:none}
 #avent .c.read .card{position:absolute;left:14%;right:14%;top:12%;height:44%;background:#fff;border:1px solid #E5D6BE;border-radius:2px;transform:rotate(-2deg);padding:4px 5px}
 #avent .c.read .card i{display:block;height:2.5px;background:#E3D9C6;margin-bottom:3px;border-radius:2px}
 #avent .c.read .card i:nth-child(2){width:75%}
-#avent .c.new .e{background:var(--ochre);border-color:#8a4f1c;box-shadow:0 0 0 3px rgba(185,112,46,.25),0 3px 10px rgba(185,112,46,.5);animation:avpulse 2.4s infinite}
-#avent .c.new .e .n{color:#fff}
+#avent .c.new .e{background:linear-gradient(160deg,#C8372D,#9C2420);border-color:#F3D27A;box-shadow:0 0 0 3px rgba(212,165,55,.35),0 3px 12px rgba(200,55,45,.55);animation:avpulse 2.4s infinite}
+#avent .c.new .e .n{color:#FFF4C8}
 #avent .c.new .e svg path{stroke:#fff}
-#avent .c.missed .e{border-color:var(--ochre);background:#fff}
-#avent .c.missed .e .n{color:var(--ochre)}
-#avent .tag{position:absolute;left:50%;top:-16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:9px;z-index:4;white-space:nowrap}
+#avent .c.missed .e{border-color:#C8372D;background:linear-gradient(160deg,#FFFDF6,#F7EEDB)}
+#avent .c.missed .e .n{color:#C8372D;text-shadow:none}
+#avent .tag{position:absolute;left:50%;top:-16px;transform:translateX(-50%);background:#1F4D35;color:#fff;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:9px;z-index:4;white-space:nowrap}
 #avent svg.str{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
 #avent .av-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 18px 0;font-size:12.5px;color:var(--ink-soft)}
 #avent .av-foot b{color:var(--ink)}
 #avent .av-btn{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);padding:5px 10px;font:600 12.5px 'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);cursor:pointer}
 #avent .av-btn:hover{border-color:var(--violet)}
-#avent .av-btn.p{background:var(--violet);border-color:var(--violet);color:#fff}
+#avent .av-btn.p{background:#C8372D;border-color:#C8372D;color:#fff}
 #avent .av-adm{padding:8px 18px 0;font-size:12px;color:var(--ink-soft);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#avent .av-adm select{padding:3px 6px;border:1px solid var(--line-strong);border-radius:3px;font:inherit;background:#fff}
 #avent .av-adm input{padding:3px 6px;border:1px solid var(--line-strong);border-radius:3px;font:inherit}
 #avmodal{position:fixed;inset:0;background:rgba(36,34,32,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:16px;font-family:'IBM Plex Sans',sans-serif}
 #avmodal .m{width:100%;max-width:860px;max-height:92vh;display:flex;background:var(--panel);border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden;border:1px solid var(--line-strong)}
@@ -155,7 +167,7 @@
 #avmodal .res{margin-top:10px}
 #avmodal .res .row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px}
 #avmodal .res .bar{height:12px;background:var(--violet);border-radius:3px}
-@keyframes avpulse{50%{box-shadow:0 0 0 5px rgba(185,112,46,.18),0 3px 14px rgba(185,112,46,.7)}}
+@keyframes avpulse{50%{box-shadow:0 0 0 6px rgba(212,165,55,.25),0 3px 18px rgba(200,55,45,.75)}}
 @media (max-width:900px){ #avent .av-grid{grid-template-columns:repeat(6,1fr)} }
 @media (max-width:640px){ #avent .av-grid{grid-template-columns:repeat(4,1fr);gap:20px 10px} #avmodal .m{flex-direction:column} #avmodal .r{border-left:none;border-top:1px solid var(--line-strong);max-height:40vh} #avmodal .t{padding:12px 16px 6px} #avmodal .acts{padding:10px 16px 12px} }
 @media print{ #avent,#avmodal{display:none !important} }
@@ -190,7 +202,7 @@
   }
 
   function lightsSvg(){
-    const cols = ['#A23B2E', '#2F6F63', '#B9702E', '#5B4B8A'];
+    const cols = ['#C8372D', '#2E6B4A', '#D4A537', '#F6E7B8'];
     let b = '';
     for(let i = 0; i < 34; i++){
       const x = 18 + i * 34.2, y = 10 + (i % 2 ? 7 : 2) + Math.sin(i * .8) * 3, c = cols[i % 4];
@@ -222,9 +234,9 @@
     const rot = [-1.5,1,-.8,1.6,-1.2,.8,1.4,-1,1.5,-1.4,.9,-.7,-1.2,1.4,-1.6,.8,-.9,1.5,1,-1.3,1.2,-1,1.6,-1.2];
     sts.forEach(s => {
       const n = s.e.n;
-      const fl = `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M0,0 L50,46 L100,0" fill="none" stroke="${s.st === 'read' || s.st === 'missed' ? 'var(--ochre)' : 'var(--violet)'}" stroke-width="1.6" opacity=".75"/></svg>`;
+      const fl = `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M0,0 L50,46 L100,0" fill="none" stroke="${s.st === 'missed' ? '#C8372D' : '#D4A537'}" stroke-width="1.6" opacity=".75"/></svg>`;
       let inner;
-      if(s.st === 'read') inner = `<div class="card"><i></i><i></i></div><svg viewBox="0 0 100 60" preserveAspectRatio="none" style="top:auto;bottom:0;height:46%"><path d="M0,60 L50,12 L100,60" fill="#F6E9D9" stroke="var(--ochre)" stroke-width="1.2"/></svg><div class="n">${n}</div>`;
+      if(s.st === 'read') inner = `<div class="card"><i></i><i></i></div><svg viewBox="0 0 100 60" preserveAspectRatio="none" style="top:auto;bottom:0;height:46%"><path d="M0,60 L50,12 L100,60" fill="#F4E6C4" stroke="#D4A537" stroke-width="1.2"/></svg><div class="n">${n}</div>`;
       else if(s.st === 'locked') inner = `${fl}<div class="lk">🔒</div><div class="n" style="opacity:.8">${n}</div>`;
       else inner = `${fl}<div class="lk" style="opacity:1;${s.st === 'new' ? 'color:#fff' : ''}">✉</div><div class="n">${n}</div>`;
       const tip = s.unlocked ? (s.e.head || `Jour ${n} — ${s.e.date}`) : `S’ouvre le ${frDay(s.ud)}`;
@@ -232,13 +244,21 @@
     });
     const voteOpen = canVote(sts);
     const showKeys = !!DATA.keys && t >= new Date(seasonYear(t), 11, 25);
-    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <input type="date" id="avSim" value="${sim ? isoOf(sim) : ''}"> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
+    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <span class="av-btn" id="avSimPrev" title="Jour précédent">◀</span><select id="avSim">${simOptions(sim)}</select><span class="av-btn" id="avSimNext" title="Jour suivant">▶</span> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
     host.querySelector('#avFold').addEventListener('click', () => { open = false; ls.set(LS_OPEN, '0'); render(); });
     host.querySelectorAll('.c').forEach(c => c.addEventListener('click', () => onEnvelope(Number(c.dataset.n))));
     host.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.p)));
     const simIn = host.querySelector('#avSim');
     if(simIn){
       simIn.addEventListener('change', () => { ls.set(LS_SIM, simIn.value || ''); render(); });
+      const step = k => {
+        const opts = Array.from(simIn.options).map(o => o.value).filter(Boolean);
+        let i = opts.indexOf(simIn.value);
+        i = i < 0 ? (k > 0 ? 0 : opts.length - 1) : Math.min(opts.length - 1, Math.max(0, i + k));
+        ls.set(LS_SIM, opts[i]); render();
+      };
+      host.querySelector('#avSimPrev').addEventListener('click', () => step(-1));
+      host.querySelector('#avSimNext').addEventListener('click', () => step(1));
       host.querySelector('#avSimClear').addEventListener('click', () => { ls.set(LS_SIM, ''); render(); });
       host.querySelector('#avReset').addEventListener('click', async () => {
         if(!confirm('Effacer vos tests (épisodes lus, carnet, suspects barrés, date simulée et votre vote) ?')) return;
