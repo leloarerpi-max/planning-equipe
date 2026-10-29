@@ -16,8 +16,8 @@
   const VOTES_KEY = 'po:avent-votes';
   // Suspects proposés au vote (à modifier ici si besoin)
   const SUSPECTS = [
-    {id: 'Clara', icon: '🧣'}, {id: 'Ben', icon: '🧥'}, {id: 'Régis', icon: '🎧'},
-    {id: 'Anaïs', icon: '🎙️'}, {id: 'Julia', icon: '🆕'}, {id: 'Pierrick', icon: '🖋️'}
+    {id: 'Clara', icon: '🎀'}, {id: 'Ben', icon: '🧥'}, {id: 'Régis', icon: '😄'}, {id: 'Anaïs', icon: '🎧'},
+    {id: 'Julia', icon: '🆕'}, {id: 'Léa', icon: '😤'}, {id: 'Virginie', icon: '🍵'}, {id: 'Pierrick', icon: '📒'}
   ];
   const VOTE_FROM_DAY = 12;   // le vote s'ouvre quand l'épisode 12 est disponible…
   const VOTE_UNTIL_DAY = 24;  // …et se ferme à l'ouverture de l'épisode 24
@@ -227,12 +227,12 @@
       if(s.st === 'read') inner = `<div class="card"><i></i><i></i></div><svg viewBox="0 0 100 60" preserveAspectRatio="none" style="top:auto;bottom:0;height:46%"><path d="M0,60 L50,12 L100,60" fill="#F6E9D9" stroke="var(--ochre)" stroke-width="1.2"/></svg><div class="n">${n}</div>`;
       else if(s.st === 'locked') inner = `${fl}<div class="lk">🔒</div><div class="n" style="opacity:.8">${n}</div>`;
       else inner = `${fl}<div class="lk" style="opacity:1;${s.st === 'new' ? 'color:#fff' : ''}">✉</div><div class="n">${n}</div>`;
-      const tip = s.unlocked ? `Jour ${n} — ${s.e.date}` : `S’ouvre le ${frDay(s.ud)}`;
+      const tip = s.unlocked ? (s.e.head || `Jour ${n} — ${s.e.date}`) : `S’ouvre le ${frDay(s.ud)}`;
       g += `<div class="c ${s.st}" data-n="${n}" title="${esc(tip)}" style="--r:${rot[n - 1]}deg"><div class="pin"></div>${s.st === 'new' ? '<div class="tag">Nouveau</div>' : ''}<div class="e">${inner}</div></div>`;
     });
     const voteOpen = canVote(sts);
-    const showKeys = t >= new Date(seasonYear(t), 11, 25);
-    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un épisode par jour ouvré</span>${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <input type="date" id="avSim" value="${sim ? isoOf(sim) : ''}"> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
+    const showKeys = !!DATA.keys && t >= new Date(seasonYear(t), 11, 25);
+    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <input type="date" id="avSim" value="${sim ? isoOf(sim) : ''}"> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
     host.querySelector('#avFold').addEventListener('click', () => { open = false; ls.set(LS_OPEN, '0'); render(); });
     host.querySelectorAll('.c').forEach(c => c.addEventListener('click', () => onEnvelope(Number(c.dataset.n))));
     host.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.p)));
@@ -305,7 +305,7 @@
     const s = sts.find(x => x.e.n === n); if(!s || !s.unlocked) return;
     const prev = sts.find(x => x.e.n === n - 1 && x.unlocked), next = sts.find(x => x.e.n === n + 1 && x.unlocked);
     const rs = readSet();
-    const m = showModal(`<div class="l"><div class="t" id="avText"><div class="wk">${esc(s.e.week)}</div><h4>Jour ${n} — ${esc(s.e.date)}</h4><div class="mt">≈ ${readMin(s.e)} min de lecture</div>${s.e.html}</div><div class="acts"><button class="b" id="avPrev" ${prev ? '' : 'disabled'}>← Précédent</button><button class="b" id="avNext" ${next ? '' : 'disabled'}>Suivant →</button><span class="sp"></span><button class="b ${rs.has(n) ? '' : 'ok'}" id="avMark">${rs.has(n) ? '✓ Lu (annuler)' : '✓ Marquer comme lu'}</button><button class="b" data-close>Fermer</button></div></div>`);
+    const m = showModal(`<div class="l"><div class="t" id="avText">${s.e.week ? `<div class="wk">${esc(s.e.week)}</div>` : ''}<h4>${esc(s.e.head || ('Jour ' + n + ' — ' + s.e.date))}</h4><div class="mt">≈ ${readMin(s.e)} min de lecture</div>${s.e.html}</div><div class="acts"><button class="b" id="avPrev" ${prev ? '' : 'disabled'}>← Précédent</button><button class="b" id="avNext" ${next ? '' : 'disabled'}>Suivant →</button><span class="sp"></span><button class="b ${rs.has(n) ? '' : 'ok'}" id="avMark">${rs.has(n) ? '✓ Lu (annuler)' : '✓ Marquer comme lu'}</button><button class="b" data-close>Fermer</button></div></div>`);
     m.querySelector('[data-close]').addEventListener('click', closeModal);
     m.querySelector('#avPrev').addEventListener('click', () => openEpisode(n - 1));
     m.querySelector('#avNext').addEventListener('click', () => openEpisode(n + 1));
