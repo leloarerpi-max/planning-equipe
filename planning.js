@@ -1451,12 +1451,7 @@ async function urgImportFile(file){
   } catch(e){ alert("Impossible de lire ce fichier Excel."); return; }
   if(parsed.error){ alert(parsed.error); return; }
   const nbDays = Object.keys(parsed.days).length;
-  const dflt = new Date(Date.now() - 30 * 86400000);
-  const dfltIso = dflt.getFullYear() + '-' + String(dflt.getMonth() + 1).padStart(2, '0') + '-' + String(dflt.getDate()).padStart(2, '0');
-  let fromIso = prompt('Écrire les urgences dans le Planning à partir de quelle date ?\nFormat AAAA-MM-JJ (ex. 2026-09-14). Les jours avant cette date ne sont pas modifiés dans le Planning.', dfltIso);
-  if(fromIso === null) return;
-  fromIso = fromIso.trim();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(fromIso)){ alert('Date non reconnue. Utilisez le format AAAA-MM-JJ.'); return; }
+  const fromIso = '0000-00-00'; // tout le fichier est lu, sans question
   if(!nbDays){ alert("Aucune urgence trouvée (colonne A = date, colonne I = prénom)."); return; }
   // Écrit aussi dans le panneau « Urgences » de chaque jour du Planning (jours existants, personnes reconnues)
   const byKey = {};
