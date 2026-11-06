@@ -1684,6 +1684,20 @@ async function renderImpayeStats(){
   const monthly = {};   // mois -> { clé -> total }
   const display = {};
   const TODO = '\u0000todo', NONAME = '\u0000noname';
+  // Totaux conservés des tableaux déjà vidés
+  try{
+    const arc = await storageGet('po:impaye-archive');
+    if(arc && arc.monthly){
+      Object.keys(arc.monthly).forEach(mk => {
+        monthly[mk] = monthly[mk] || {};
+        Object.keys(arc.monthly[mk]).forEach(k => {
+          const kk = (k === '~sans-nom') ? NONAME : k;
+          if(kk !== NONAME && arc.display && arc.display[k] && !display[kk]) display[kk] = arc.display[k];
+          monthly[mk][kk] = (monthly[mk][kk] || 0) + (Number(arc.monthly[mk][k]) || 0);
+        });
+      });
+    }
+  } catch(e){}
   rows.forEach(r => {
     const n = Number(r && r.count) || 0;
     const m = /^(\d{4})-(\d{2})-\d{2}$/.exec((r && r.date) || '');

@@ -10,6 +10,7 @@
    ========================================================================== */
 (function(){
   const IMPAYE_KEY = 'po:impaye';
+  const ARCHIVE_KEY = 'po:impaye-archive'; // totaux conservés quand on vide le tableau (statistiques)
   let impaye = { rows: [] };
   let loaded = false;
   let dirty = false; // une mise à jour est arrivée pendant une saisie : on l'affichera après
@@ -185,12 +186,53 @@
     if(!impaye.rows.length) return;
     if(!confirm('Vider tout le tableau « Suivi impayé » ? (Tu pourras annuler pendant quelques secondes.)')) return;
     const backup = impaye.rows.map(r => ({...r}));
+    // Les statistiques sont conservées : on met les totaux (lignes « faites ») de côté AVANT de vider.
+    const delta = archiveDelta(backup);
+    const archived = await archiveAdd(delta, 1);
+    if(!archived){ alert("Impossible de sauvegarder les statistiques (connexion ?). Le tableau n'a PAS été vidé."); return; }
     const ok = await mutate(d => { d.rows = []; });
-    if(!ok) return;
-    logChange(`a vidé le suivi impayé (${backup.length} ligne(s))`);
-    showUndoToast('Tableau vidé', async () => {
+    if(!ok){ await archiveAdd(delta, -1); return; }
+    logChange(`a vidé le suivi impayé (${backup.length} ligne(s)) — statistiques conservées`);
+    showUndoToast('Tableau vidé (statistiques conservées)', async () => {
       await mutate(d => { backup.forEach(b => { if(!d.rows.some(r => r.id === b.id)) d.rows.push(b); }); });
+      await archiveAdd(delta, -1);
     });
+  }
+  /* Archive des statistiques : { monthly: { 'AAAA-MM': { 'prénom en minuscules' | '~sans-nom': total } }, display: { clé: 'Prénom' } } */
+  function archiveDelta(rows){
+    const monthly = {}, display = {};
+    rows.forEach(r => {
+      const n = Number(r && r.count) || 0;
+      const m = /^(\d{4})-(\d{2})-\d{2}$/.exec((r && r.date) || '');
+      if(!n || !m || !r.done) return; // les lignes « à faire » ne sont pas des statistiques
+      const mk = m[1] + '-' + m[2];
+      let k;
+      if(r.doneBy && String(r.doneBy).trim()){ k = String(r.doneBy).trim().toLowerCase(); display[k] = String(r.doneBy).trim(); }
+      else k = '~sans-nom';
+      monthly[mk] = monthly[mk] || {};
+      monthly[mk][k] = (monthly[mk][k] || 0) + n;
+    });
+    return { monthly, display };
+  }
+  async function archiveAdd(delta, sign){
+    if(!Object.keys(delta.monthly).length) return true;
+    try{
+      await storageTransaction(ARCHIVE_KEY, cur => {
+        const a = (cur && typeof cur === 'object') ? cur : {};
+        a.monthly = a.monthly || {}; a.display = a.display || {};
+        Object.keys(delta.monthly).forEach(mk => {
+          a.monthly[mk] = a.monthly[mk] || {};
+          Object.keys(delta.monthly[mk]).forEach(k => {
+            const v = (a.monthly[mk][k] || 0) + sign * delta.monthly[mk][k];
+            if(v > 0) a.monthly[mk][k] = v; else delete a.monthly[mk][k];
+          });
+          if(!Object.keys(a.monthly[mk]).length) delete a.monthly[mk];
+        });
+        Object.assign(a.display, delta.display);
+        return a;
+      });
+      return true;
+    } catch(e){ return false; }
   }
 
   /* --- événements (délégation : le tableau est redessiné) ----------------- */
