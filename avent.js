@@ -13,7 +13,7 @@
    ========================================================================== */
 (function(){
   const VIDEO_SRC = 'avent-video.mp4'; // fichier à placer à côté de index.html
-  const LS_OPEN = 'av-open', LS_READ = 'av-read', LS_SIM = 'av-sim', LS_NOTES = 'av-notes', LS_STRIKE = 'av-strike';
+  const LS_OPEN = 'av-open', LS_READ = 'av-read', LS_SIM = 'av-sim', LS_NOTES = 'av-notes', LS_STRIKE = 'av-strike', LS_VIDEO = 'av-video';
   const VOTES_KEY = 'po:avent-votes';
   // Suspects proposés au vote (à modifier ici si besoin)
   const SUSPECTS = [
@@ -236,6 +236,7 @@
       host.innerHTML = `<div class="av-bar" id="avBar">🔍 <b>Calendrier de l’avent</b><small>${nbToRead ? '— ' + nbToRead + ' chapitre' + (nbToRead > 1 ? 's' : '') + ' à lire' : (nbUnlocked ? '— vous êtes à jour' : teaserText(t))}</small>${preview}<span class="av-sp"></span><span class="av-chip o" id="avVid" style="cursor:pointer" title="Voir la vidéo de présentation">▶ Vidéo</span>${nbToRead ? `<span class="av-chip o">${nbToRead} nouveau${nbToRead > 1 ? 'x' : ''}</span>` : ''}<span class="av-chip">${nbRead} / 24 lus</span><span class="av-go">▼ Déplier</span></div>`;
       host.querySelector('#avBar').addEventListener('click', () => { open = true; ls.set(LS_OPEN, '1'); render(); });
       host.querySelector('#avVid').addEventListener('click', e => { e.stopPropagation(); openPanel('video'); });
+      setTimeout(autoVideo, 800);
       return;
     }
 
@@ -271,13 +272,23 @@
       host.querySelector('#avSimClear').addEventListener('click', () => { ls.set(LS_SIM, ''); render(); });
       host.querySelector('#avReset').addEventListener('click', async () => {
         if(!confirm('Effacer vos tests (épisodes lus, carnet, suspects barrés, date simulée et votre vote) ?')) return;
-        [LS_READ, LS_NOTES, LS_STRIKE, LS_SIM].forEach(k => { try{ localStorage.removeItem(k); } catch(e){} });
+        [LS_READ, LS_NOTES, LS_STRIKE, LS_SIM, LS_VIDEO].forEach(k => { try{ localStorage.removeItem(k); } catch(e){} });
         const me = myVoteName();
         if(me){ try{ await storageTransaction(VOTES_KEY, cur => { const o = (cur && typeof cur === 'object') ? cur : {}; if(!(me in o)) return undefined; delete o[me]; return o; }); } catch(e){} }
         render();
       });
     }
     drawString();
+    setTimeout(autoVideo, 800);
+  }
+
+  let videoAutoDone = false;
+  function autoVideo(){
+    if(videoAutoDone) return; videoAutoDone = true;
+    if(ls.get(LS_VIDEO, '')) return;
+    const v = document.createElement('video'); v.preload = 'metadata';
+    v.addEventListener('loadedmetadata', () => { if(!modal && !ls.get(LS_VIDEO, '')) openPanel('video'); });
+    v.src = VIDEO_SRC;
   }
 
   function drawString(){
@@ -364,6 +375,7 @@
   function openPanel(p){
     const sts = status(today());
     if(p === 'video'){
+      ls.set(LS_VIDEO, '1'); // vue une fois : plus d'ouverture automatique
       const m = showModal(`<div class="l"><div class="t" style="padding:14px 18px 8px"><div class="wk">Présentation</div><h4>▶ Le calendrier de l’avent en vidéo</h4><video id="avVideo" src="${VIDEO_SRC}" controls autoplay playsinline preload="auto" style="width:100%;max-height:68vh;margin-top:10px;background:#0e2a22;border-radius:4px"></video><p id="avVideoErr" style="display:none;margin-top:10px">La vidéo n’est pas disponible pour le moment.</p></div><div class="acts"><span class="sp"></span><button class="b" data-close>Fermer</button></div></div>`, true);
       m.querySelector('.m').classList.add('vid');
       const v = m.querySelector('#avVideo');
