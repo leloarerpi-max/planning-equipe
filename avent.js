@@ -12,6 +12,7 @@
    - Les « clés de lecture » apparaissent à partir du 25 décembre.
    ========================================================================== */
 (function(){
+  const VIDEO_SRC = 'avent-video.mp4'; // fichier à placer à côté de index.html
   const LS_OPEN = 'av-open', LS_READ = 'av-read', LS_SIM = 'av-sim', LS_NOTES = 'av-notes', LS_STRIKE = 'av-strike';
   const VOTES_KEY = 'po:avent-votes';
   // Suspects proposés au vote (à modifier ici si besoin)
@@ -143,6 +144,7 @@
 #avmodal{position:fixed;inset:0;background:rgba(36,34,32,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:16px;font-family:'IBM Plex Sans',sans-serif}
 #avmodal .m{width:100%;max-width:860px;max-height:92vh;display:flex;background:var(--panel);border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden;border:1px solid var(--line-strong)}
 #avmodal .m.one{max-width:640px}
+#avmodal .m.vid{max-width:960px}
 #avmodal .l{flex:1.6;display:flex;flex-direction:column;min-width:0}
 #avmodal .l:before{content:'';display:block;flex:0 0 8px;background:repeating-linear-gradient(135deg,#F2C94C 0 10px,#242220 10px 20px)}
 #avmodal .t{padding:14px 24px 6px;overflow-y:auto;flex:1}
@@ -231,8 +233,9 @@
     const preview = adm && !inWindow(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) ? ' <span class="av-chip">aperçu superviseur</span>' : '';
 
     if(!open){
-      host.innerHTML = `<div class="av-bar" id="avBar">🔍 <b>Calendrier de l’avent</b><small>${nbToRead ? '— ' + nbToRead + ' chapitre' + (nbToRead > 1 ? 's' : '') + ' à lire' : (nbUnlocked ? '— vous êtes à jour' : teaserText(t))}</small>${preview}<span class="av-sp"></span>${nbToRead ? `<span class="av-chip o">${nbToRead} nouveau${nbToRead > 1 ? 'x' : ''}</span>` : ''}<span class="av-chip">${nbRead} / 24 lus</span><span class="av-go">▼ Déplier</span></div>`;
+      host.innerHTML = `<div class="av-bar" id="avBar">🔍 <b>Calendrier de l’avent</b><small>${nbToRead ? '— ' + nbToRead + ' chapitre' + (nbToRead > 1 ? 's' : '') + ' à lire' : (nbUnlocked ? '— vous êtes à jour' : teaserText(t))}</small>${preview}<span class="av-sp"></span><span class="av-chip o" id="avVid" style="cursor:pointer" title="Voir la vidéo de présentation">▶ Vidéo</span>${nbToRead ? `<span class="av-chip o">${nbToRead} nouveau${nbToRead > 1 ? 'x' : ''}</span>` : ''}<span class="av-chip">${nbRead} / 24 lus</span><span class="av-go">▼ Déplier</span></div>`;
       host.querySelector('#avBar').addEventListener('click', () => { open = true; ls.set(LS_OPEN, '1'); render(); });
+      host.querySelector('#avVid').addEventListener('click', e => { e.stopPropagation(); openPanel('video'); });
       return;
     }
 
@@ -250,7 +253,7 @@
     });
     const voteOpen = canVote(sts);
     const showKeys = !!DATA.keys && t >= new Date(seasonYear(t), 11, 25);
-    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${nbUnlocked ? '' : `<span class="av-chip o">${esc(teaserText(t).replace(/^— /, ''))}</span>`}${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <span class="av-btn" id="avSimPrev" title="Jour précédent">◀</span><select id="avSim">${simOptions(sim)}</select><span class="av-btn" id="avSimNext" title="Jour suivant">▶</span> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
+    host.innerHTML = `<div class="av-board">${lightsSvg()}<div class="av-head"><h3>🔍 ${esc(DATA.title.replace(/^Magnolia — /, ''))}</h3><span class="s">${esc(DATA.subtitle)} — un chapitre par jour ouvré</span>${nbUnlocked ? '' : `<span class="av-chip o">${esc(teaserText(t).replace(/^— /, ''))}</span>`}${preview}<span class="av-sp" style="flex:1"></span><span class="av-btn p" data-p="video">▶ Vidéo de présentation</span><span class="av-btn" id="avFold">▲ Replier</span></div><div class="av-grid" id="avGrid">${g}</div><div class="av-foot"><span>🕵️ <b>${nbRead} / 24</b> lus</span><span class="av-sp" style="flex:1"></span><span class="av-btn" data-p="carnet">📓 Carnet d’enquête</span><span class="av-btn" data-p="suspects">👥 Suspects</span>${(voteOpen || votesVisible(sts)) ? `<span class="av-btn p" data-p="vote">🗳️ ${voteOpen ? 'Voter' : 'Résultats du vote'}</span>` : ''}${showKeys ? '<span class="av-btn" data-p="cles">🗝️ Clés de lecture</span>' : ''}</div>${adm ? `<div class="av-adm">🧪 Superviseur : simuler la date <span class="av-btn" id="avSimPrev" title="Jour précédent">◀</span><select id="avSim">${simOptions(sim)}</select><span class="av-btn" id="avSimNext" title="Jour suivant">▶</span> <span class="av-btn" id="avSimClear">Date réelle</span><span class="av-btn" id="avReset" title="Efface vos lectures, notes, suspects barrés et votre vote de test">🧹 Effacer mes tests</span><span>(visible par vous seul, sur ce poste)</span></div>` : ''}</div>`;
     host.querySelector('#avFold').addEventListener('click', () => { open = false; ls.set(LS_OPEN, '0'); render(); });
     host.querySelectorAll('.c').forEach(c => c.addEventListener('click', () => onEnvelope(Number(c.dataset.n))));
     host.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.p)));
@@ -360,6 +363,14 @@
 
   function openPanel(p){
     const sts = status(today());
+    if(p === 'video'){
+      const m = showModal(`<div class="l"><div class="t" style="padding:14px 18px 8px"><div class="wk">Présentation</div><h4>▶ Le calendrier de l’avent en vidéo</h4><video id="avVideo" src="${VIDEO_SRC}" controls autoplay playsinline preload="auto" style="width:100%;max-height:68vh;margin-top:10px;background:#0e2a22;border-radius:4px"></video><p id="avVideoErr" style="display:none;margin-top:10px">La vidéo n’est pas disponible pour le moment.</p></div><div class="acts"><span class="sp"></span><button class="b" data-close>Fermer</button></div></div>`, true);
+      m.querySelector('.m').classList.add('vid');
+      const v = m.querySelector('#avVideo');
+      v.addEventListener('error', () => { v.style.display = 'none'; m.querySelector('#avVideoErr').style.display = 'block'; });
+      v.play && v.play().catch(() => {});
+      m.querySelector('[data-close]').addEventListener('click', closeModal); return;
+    }
     if(p === 'cles'){
       const m = showModal(`<div class="l"><div class="t"><div class="wk">Après le dénouement</div><h4>🗝️ Clés de lecture</h4><div class="mt">Les indices semés tout au long du récit — pour ceux qui voudront relire.</div>${DATA.keys || ''}</div><div class="acts"><span class="sp"></span><button class="b" data-close>Fermer</button></div></div>`);
       m.querySelector('[data-close]').addEventListener('click', closeModal); return;
