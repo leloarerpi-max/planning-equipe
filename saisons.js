@@ -402,9 +402,9 @@
     return forced;
   }
   function activeSeason(){
-    if(choice === 'none') return 'none';          // "Sans décor" personnel reste respecté
     const f = forcedActive();
-    if(f) return f.season === 'auto' ? seasonFromDate(new Date()) : f.season;
+    if(f) return f.season === 'auto' ? seasonFromDate(new Date()) : f.season;   // imposé : personne ne peut le changer
+    if(choice === 'none') return 'none';
     return choice === 'auto' ? seasonFromDate(new Date()) : choice;
   }
   function adminNow(){ try{ return typeof isAdmin !== 'undefined' && !!isAdmin; } catch(e){ return false; } }
@@ -436,7 +436,7 @@
     SAISONS.forEach(k => { h += item(k, `${ICONS[k]} ${NAMES[k]}`); });
     h += '<div class="season-sep">Fêtes et événements</div>';
     FETES.forEach(k => { h += item(k, `${ICONS[k]} ${NAMES[k]}`); });
-    h += `<button type="button" data-season="none" class="${choice === 'none' ? 'current' : ''}">${ICONS.none} Sans décor${choice === 'none' ? ' ✓' : ''}</button>`;
+    h += `<button type="button" data-season="none"${dis} class="${choice === 'none' && !f ? 'current' : ''}">${ICONS.none} Sans décor${choice === 'none' && !f ? ' ✓' : ''}</button>`;
     if(adminNow()){
       h += '<div class="season-sep">Superviseur</div>';
       h += '<button type="button" data-impose="auto">📌 Imposer le décor AUTOMATIQUE à l’équipe (change selon les dates)</button>';
@@ -453,7 +453,7 @@
     document.documentElement.setAttribute('data-season', s);
     btn.textContent = ICONS[s] || '🎨';
     const f = forcedActive();
-    btn.title = (f && choice !== 'none') ? `Décor imposé${f.season === 'auto' ? ' (automatique)' : ''} : ${NAMES[s]}` : (choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`);
+    btn.title = f ? `Décor imposé${f.season === 'auto' ? ' (automatique)' : ''} : ${NAMES[s]}` : (choice === 'auto' ? `Décor : ${NAMES[s]} (automatique)` : `Décor : ${NAMES[s]}`);
     renderMenu();
   }
 
