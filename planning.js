@@ -1613,8 +1613,10 @@ async function renderAvenantsStats(editMode){
   }
 }
 /* Impayés par personne et par mois : somme des « Nombre » du Suivi impayé, rangée selon « Fait par » et le mois de la date de la ligne */
-/* Mises en demeure par personne et par mois : somme des « Nombre » de la tâche « Mise en demeure »
-   sur tous les jours du Planning, partagée entre les personnes assignées (comme les Échanges clients). */
+/* Mises en demeure par personne et par mois.
+   - AVANT le 20/11/2026 : somme des « Nombre » de la tâche « Mise en demeure » du Planning, partagée entre les personnes assignées.
+   - À PARTIR de ce jour : le « Suivi mises en demeure » (lignes + totaux conservés des lignes supprimées / tableaux vidés), comme les impayés. */
+const MED_FROM = '2026-11-20';
 async function renderMedStats(){
   const panel = document.getElementById('statsPanel');
   if(!panel) return;
@@ -1622,15 +1624,17 @@ async function renderMedStats(){
   if(!shell){
     const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Mises en demeure par personne et par mois';
     const hint = document.createElement('p'); hint.className = 'hint';
-    hint.textContent = "Le chiffre saisi dans « Nombre » sur la tâche « Mise en demeure », depuis le début du Planning, partagé entre les personnes assignées quand elles sont plusieurs. « Non attribué » : jours où personne n'était assigné à la tâche.";
+    hint.textContent = "Jusqu'au 19/11/2026 : le chiffre saisi dans « Nombre » sur la tâche « Mise en demeure » du Planning (partagé entre les personnes assignées). À partir du 20/11/2026 : les nombres saisis dans le Suivi mises en demeure, par personne indiquée dans « Fait par » et par mois de la date de la ligne. « À faire » : lignes pas encore faites. « Sans nom » : lignes faites sans prénom ou jours sans personne assignée.";
     shell = document.createElement('div'); shell.id = 'statsMedShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:460px;';
     panel.appendChild(h); panel.appendChild(hint); panel.appendChild(shell);
   }
   shell.innerHTML = '';
-  const isMed = n => /^mises?\s+en\s+demeure\b/.test(String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase());
-  const NOONE = '\u0000none';
-  const monthly = {};
-  const all = await Promise.all(daysIndex.map(async d => ({date: d, data: await loadDayData(d)})));
+  const isMed = n => /^mises?\s+en\s+demeure\b/.test(String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase());
+  const TODO = '\u0000todo', NONAME = '\u0000noname';
+  const monthly = {}, display = {};
+  const add = (mk, k, n) => { monthly[mk] = monthly[mk] || {}; monthly[mk][k] = (monthly[mk][k] || 0) + n; };
+  // 1) historique du Planning, avant la mise en service du tableau
+  const all = await Promise.all(daysIndex.filter(d => d < MED_FROM).map(async d => ({date: d, data: await loadDayData(d)})));
   all.forEach(({date, data}) => {
     const mk = date.slice(0, 7);
     ((data && data.tasks) || []).forEach(t => {
@@ -1638,15 +1642,39 @@ async function renderMedStats(){
       const n = Number(t.objectif) || 0;
       if(!n) return;
       const ids = (t.personIds || []).filter(pid => people.some(p => p.id === pid));
-      monthly[mk] = monthly[mk] || {};
-      if(!ids.length){ monthly[mk][NOONE] = (monthly[mk][NOONE] || 0) + n; return; }
-      ids.forEach(pid => { monthly[mk][pid] = (monthly[mk][pid] || 0) + n / ids.length; });
+      if(!ids.length){ add(mk, NONAME, n); return; }
+      ids.forEach(pid => { const p = people.find(x => x.id === pid); add(mk, p.name.trim().toLowerCase(), n / ids.length); });
     });
+  });
+  // 2) totaux conservés (lignes supprimées / tableaux vidés)
+  try{
+    const arc = await storageGet('po:med-archive');
+    if(arc && arc.monthly){
+      Object.keys(arc.monthly).forEach(mk => Object.keys(arc.monthly[mk]).forEach(k => {
+        const kk = (k === '~sans-nom') ? NONAME : k;
+        if(kk !== NONAME && arc.display && arc.display[k] && !display[kk]) display[kk] = arc.display[k];
+        add(mk, kk, Number(arc.monthly[mk][k]) || 0);
+      }));
+    }
+  } catch(e){}
+  // 3) lignes actuellement dans le tableau
+  const v = await storageGet('po:med');
+  ((v && Array.isArray(v.rows)) ? v.rows : []).forEach(r => {
+    const n = Number(r && r.count) || 0;
+    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec((r && r.date) || '');
+    if(!n || !m) return;
+    const mk = m[1] + '-' + m[2];
+    let k;
+    if(r.doneBy && String(r.doneBy).trim()){ k = String(r.doneBy).trim().toLowerCase(); if(!display[k]) display[k] = String(r.doneBy).trim(); }
+    else k = r.done ? NONAME : TODO;
+    add(mk, k, n);
   });
   const mks = Object.keys(monthly).sort();
   if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
-  const cols = people.map(p => ({k: p.id, label: p.name}));
-  if(mks.some(mk => monthly[mk][NOONE])) cols.push({k: NOONE, label: 'Non attribué'});
+  const cols = people.map(p => ({k: p.name.trim().toLowerCase(), label: p.name}));
+  Object.keys(display).sort().forEach(k => { if(!cols.some(c => c.k === k)) cols.push({k, label: display[k]}); });
+  if(mks.some(mk => monthly[mk][NONAME])) cols.push({k: NONAME, label: 'Sans nom'});
+  if(mks.some(mk => monthly[mk][TODO])) cols.push({k: TODO, label: 'À faire'});
   const r1 = x => Math.round(x * 10) / 10;
   let html = '<table class="stats-matrix"><thead><tr><th style="text-align:left;position:sticky;left:0;background:var(--panel);">Mois</th>';
   cols.forEach(c => { html += `<th>${escapeHtml(c.label)}</th>`; });
@@ -1654,12 +1682,12 @@ async function renderMedStats(){
   mks.forEach(mk => {
     html += `<tr><td class="stats-task-name">${escapeHtml(mealMonthLabel(mk + '-01'))}</td>`;
     const vals = cols.map(c => r1(monthly[mk][c.k] || 0));
-    const rowMax = Math.max(...vals.filter((x, i) => cols[i].k !== NOONE), 0);
+    const rowMax = Math.max(...vals.filter((x, i) => cols[i].k !== TODO), 0);
     let tot = 0;
-    vals.forEach((v, i) => {
-      tot += v;
-      const cls = v === 0 ? 'stats-count-0' : (v === rowMax && rowMax > 0 && cols[i].k !== NOONE ? 'stats-count-hi' : '');
-      html += `<td class="${cls}">${v || ''}</td>`;
+    vals.forEach((x, i) => {
+      if(cols[i].k !== TODO) tot += x;
+      const cls = x === 0 ? 'stats-count-0' : (x === rowMax && rowMax > 0 && cols[i].k !== TODO ? 'stats-count-hi' : '');
+      html += `<td class="${cls}">${x || ''}</td>`;
     });
     html += `<td style="font-weight:700;">${r1(tot)}</td></tr>`;
   });
