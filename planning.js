@@ -1614,9 +1614,10 @@ async function renderAvenantsStats(editMode){
 }
 /* Impayés par personne et par mois : somme des « Nombre » du Suivi impayé, rangée selon « Fait par » et le mois de la date de la ligne */
 /* Mises en demeure par personne et par mois.
-   - AVANT le 20/11/2026 : somme des « Nombre » de la tâche « Mise en demeure » du Planning, partagée entre les personnes assignées.
-   - À PARTIR de ce jour : le « Suivi mises en demeure » (lignes + totaux conservés des lignes supprimées / tableaux vidés), comme les impayés. */
-const MED_FROM = '2026-11-20';
+   - Pour chaque mois : si le « Suivi mises en demeure » contient des chiffres pour ce mois (lignes + totaux conservés des lignes
+     supprimées / tableaux vidés), ce sont EUX qui comptent, comme pour les impayés.
+   - Sinon (mois sans saisie dans le tableau) : somme des « Nombre » de la tâche « Mise en demeure » du Planning, partagée entre les personnes assignées.
+   Un même mois n'est donc jamais compté deux fois. */
 async function renderMedStats(){
   const panel = document.getElementById('statsPanel');
   if(!panel) return;
@@ -1624,7 +1625,7 @@ async function renderMedStats(){
   if(!shell){
     const h = document.createElement('h2'); h.style.marginTop = '28px'; h.textContent = 'Mises en demeure par personne et par mois';
     const hint = document.createElement('p'); hint.className = 'hint';
-    hint.textContent = "Jusqu'au 19/11/2026 : le chiffre saisi dans « Nombre » sur la tâche « Mise en demeure » du Planning (partagé entre les personnes assignées). À partir du 20/11/2026 : les nombres saisis dans le Suivi mises en demeure, par personne indiquée dans « Fait par » et par mois de la date de la ligne. « À faire » : lignes pas encore faites. « Sans nom » : lignes faites sans prénom ou jours sans personne assignée.";
+    hint.textContent = "Les mois où le Suivi mises en demeure est rempli : la somme des nombres saisis, par personne indiquée dans « Fait par » et par mois de la date de la ligne. Les mois sans saisie dans ce tableau (septembre, octobre…) : le chiffre de la tâche « Mise en demeure » du Planning, partagé entre les personnes assignées. « À faire » : lignes pas encore faites. « Sans nom » : lignes faites sans prénom ou jours sans personne assignée.";
     shell = document.createElement('div'); shell.id = 'statsMedShell'; shell.className = 'table-shell'; shell.style.cssText = 'overflow:auto; max-height:460px;';
     panel.appendChild(h); panel.appendChild(hint); panel.appendChild(shell);
   }
@@ -1632,9 +1633,10 @@ async function renderMedStats(){
   const isMed = n => /^mises?\s+en\s+demeure\b/.test(String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase());
   const TODO = '\u0000todo', NONAME = '\u0000noname';
   const monthly = {}, display = {};
-  const add = (mk, k, n) => { monthly[mk] = monthly[mk] || {}; monthly[mk][k] = (monthly[mk][k] || 0) + n; };
-  // 1) historique du Planning, avant la mise en service du tableau
-  const all = await Promise.all(daysIndex.filter(d => d < MED_FROM).map(async d => ({date: d, data: await loadDayData(d)})));
+  const plan = {}, tbl = {};   // plan = tâche du Planning, tbl = Suivi mises en demeure
+  const addTo = (o, mk, k, n) => { o[mk] = o[mk] || {}; o[mk][k] = (o[mk][k] || 0) + n; };
+  // 1) historique de la tâche du Planning
+  const all = await Promise.all(daysIndex.map(async d => ({date: d, data: await loadDayData(d)})));
   all.forEach(({date, data}) => {
     const mk = date.slice(0, 7);
     ((data && data.tasks) || []).forEach(t => {
@@ -1642,8 +1644,8 @@ async function renderMedStats(){
       const n = Number(t.objectif) || 0;
       if(!n) return;
       const ids = (t.personIds || []).filter(pid => people.some(p => p.id === pid));
-      if(!ids.length){ add(mk, NONAME, n); return; }
-      ids.forEach(pid => { const p = people.find(x => x.id === pid); add(mk, p.name.trim().toLowerCase(), n / ids.length); });
+      if(!ids.length){ addTo(plan, mk, NONAME, n); return; }
+      ids.forEach(pid => { const p = people.find(x => x.id === pid); addTo(plan, mk, p.name.trim().toLowerCase(), n / ids.length); });
     });
   });
   // 2) totaux conservés (lignes supprimées / tableaux vidés)
@@ -1653,7 +1655,7 @@ async function renderMedStats(){
       Object.keys(arc.monthly).forEach(mk => Object.keys(arc.monthly[mk]).forEach(k => {
         const kk = (k === '~sans-nom') ? NONAME : k;
         if(kk !== NONAME && arc.display && arc.display[k] && !display[kk]) display[kk] = arc.display[k];
-        add(mk, kk, Number(arc.monthly[mk][k]) || 0);
+        addTo(tbl, mk, kk, Number(arc.monthly[mk][k]) || 0);
       }));
     }
   } catch(e){}
@@ -1667,7 +1669,12 @@ async function renderMedStats(){
     let k;
     if(r.doneBy && String(r.doneBy).trim()){ k = String(r.doneBy).trim().toLowerCase(); if(!display[k]) display[k] = String(r.doneBy).trim(); }
     else k = r.done ? NONAME : TODO;
-    add(mk, k, n);
+    addTo(tbl, mk, k, n);
+  });
+  // un mois saisi dans le tableau = le tableau fait foi ; sinon le Planning
+  new Set([...Object.keys(plan), ...Object.keys(tbl)]).forEach(mk => {
+    const t = tbl[mk];
+    monthly[mk] = (t && Object.keys(t).length) ? t : plan[mk];
   });
   const mks = Object.keys(monthly).sort();
   if(!mks.length){ shell.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
