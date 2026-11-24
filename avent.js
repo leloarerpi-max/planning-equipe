@@ -3,7 +3,7 @@
    Chargé APRÈS saisons.js (voir index.html). S'il manquait ou plantait, le reste du
    site continuerait de fonctionner. Ne modifie AUCUNE donnée du planning.
 
-   - Le bandeau n’apparaît que du 27 novembre au 1er janvier (le superviseur peut
+   - Le bandeau n’apparaît que du 30 novembre au 1er janvier (le superviseur peut
      le voir toute l'année et simuler une date pour tester).
    - Un épisode par jour. Les épisodes du samedi et du dimanche s'ouvrent le lundi
      (comme prévu dans le roman) : le lundi, trois épisodes d'un coup.
@@ -59,7 +59,7 @@
     if(dow === 0) return new Date(year, 11, n + 1);
     return d;
   }
-  const TEASER_DAY = 27;   // le bandeau apparaît dès le 27 novembre (enveloppes encore scellées) pour faire monter l'attente
+  const TEASER_DAY = 30;   // le bandeau apparaît dès le 30 novembre (enveloppes encore scellées) pour faire monter l'attente
   function inWindow(t){
     const y = seasonYear(t);
     return t >= new Date(y, 10, TEASER_DAY) && t <= new Date(y + 1, 0, 1);
@@ -284,6 +284,9 @@
 
   let videoAutoDone = false;
   function autoVideo(){
+    // Ouverture automatique seulement pendant la vraie période (pas pendant l'aperçu superviseur avant le 30 novembre)
+    const n = new Date();
+    if(!inWindow(new Date(n.getFullYear(), n.getMonth(), n.getDate()))) return;
     if(videoAutoDone) return; videoAutoDone = true;
     if(ls.get(LS_VIDEO, '')) return;
     const v = document.createElement('video'); v.preload = 'metadata';
