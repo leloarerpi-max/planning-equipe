@@ -583,7 +583,12 @@
   .pl-side .cat-badges-row{ display:grid; grid-template-columns:repeat(auto-fill, minmax(92px,1fr)); gap:4px; }
   .pl-side .cat-badge{ flex-direction:column; align-items:flex-start; gap:0; border-radius:3px; padding:3px 7px; font-size:10px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; }
   .pl-side .cat-badge b{ font-size:13px; }
-  .pl-side #btnReportSuivi{ grid-column:1 / -1; justify-self:start; margin:2px 0 0 !important; padding:2px 0; font-size:12px; }
+  .pl-side #btnReportSuivi{
+    grid-column:1 / -1; justify-self:stretch; margin:4px 0 0 !important; padding:6px 10px; font-size:12.5px; font-weight:600;
+    background:var(--ink); color:#fff; border:1px solid var(--ink); border-radius:var(--radius); text-decoration:none; text-align:center;
+  }
+  .pl-side #btnReportSuivi:hover{ background:#3a3733; }
+  .pl-side #btnReportSuivi:disabled{ opacity:.5; cursor:wait; }
   .side-card{ margin:0; background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); padding:12px 14px; }
   .pl-side h2, .pl-side .impaye-head h2{ font-size:15px !important; margin:0 0 8px; display:flex; align-items:center; gap:6px; }
   .pl-side .urgences-inputs{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 8px; overflow:visible; }
