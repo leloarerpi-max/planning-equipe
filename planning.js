@@ -2215,3 +2215,70 @@ function enhanceStats(){
   new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(enhanceStats, 60); })
     .observe(panel, {childList: true, subtree: true});
 })();
+
+/* --- Google Sheet « Urgences compagnies » en pop-up -----------------------
+   C'est le vrai Sheet (lien de modification) : les modifications sont enregistrées
+   directement dans le Sheet par Google, au nom de la personne connectée.
+   Chargé à la première ouverture seulement, puis gardé (réouverture instantanée).
+   « Masquer les menus Google » (paramètre rm=minimal) : choix gardé sur chaque poste. */
+(function(){
+  const ov = document.getElementById('sheetOverlay');
+  const btn = document.getElementById('btnSheetUrg');
+  if(!ov || !btn) return;
+  const base = ov.dataset.sheetUrl || '';
+  const frame = document.getElementById('sheetFrame');
+  const minimal = document.getElementById('sheetMinimal');
+  const link = document.getElementById('sheetOpenLink');
+  const gidMatch = /[?&#]gid=(\d+)/.exec(base);
+  const hash = gidMatch ? '#gid=' + gidMatch[1] : '';
+  function embedUrl(){
+    const clean = base.split('#')[0];
+    return clean + (minimal && minimal.checked ? (clean.includes('?') ? '&' : '?') + 'rm=minimal' : '') + hash;
+  }
+  if(link) link.href = base.split('#')[0] + hash;
+  if(minimal){
+    minimal.checked = plLocal.get('pl-sheet-minimal', '0') === '1';
+    minimal.addEventListener('change', () => {
+      plLocal.set('pl-sheet-minimal', minimal.checked ? '1' : '0');
+      if(frame.getAttribute('src')) frame.src = embedUrl();
+    });
+  }
+  function open(){
+    if(!frame.getAttribute('src')) frame.src = embedUrl();
+    ov.classList.add('open');
+    document.body.classList.add('pl-modal-open');
+  }
+  function close(){
+    ov.classList.remove('open');
+    document.body.classList.toggle('pl-modal-open', !!document.querySelector('.pl-overlay.open'));
+  }
+  btn.addEventListener('click', open);
+  ov.querySelector('[data-close="sheet"]').addEventListener('click', close);
+  ov.addEventListener('click', e => { if(e.target === ov) close(); });
+  document.getElementById('btnSheetReload').addEventListener('click', () => { frame.src = embedUrl(); });
+  // Taille d'affichage : on réduit (ou agrandit) toute la fenêtre du Sheet pour voir plus de colonnes.
+  // Le Sheet lui-même n'est pas modifié ; le choix est gardé sur chaque poste.
+  const ZOOMS = [50, 60, 70, 75, 80, 85, 90, 100, 110, 125];
+  const ZOOM_DEFAULT = 85;   // taille d'affichage par défaut du Sheet
+  let zoom = parseInt(plLocal.get('pl-sheet-zoom', String(ZOOM_DEFAULT)), 10);
+  if(!ZOOMS.includes(zoom)) zoom = ZOOM_DEFAULT;
+  const zoomLabel = document.getElementById('btnSheetZoomReset');
+  function applyZoom(){
+    const f = zoom / 100;
+    frame.style.transform = f === 1 ? '' : 'scale(' + f + ')';
+    frame.style.width = (100 / f) + '%';
+    frame.style.height = (100 / f) + '%';
+    if(zoomLabel) zoomLabel.textContent = zoom + ' %';
+    plLocal.set('pl-sheet-zoom', String(zoom));
+  }
+  function stepZoom(dir){
+    const i = ZOOMS.indexOf(zoom);
+    zoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i + dir))];
+    applyZoom();
+  }
+  document.getElementById('btnSheetZoomOut').addEventListener('click', () => stepZoom(-1));
+  document.getElementById('btnSheetZoomIn').addEventListener('click', () => stepZoom(1));
+  if(zoomLabel) zoomLabel.addEventListener('click', () => { zoom = ZOOM_DEFAULT; applyZoom(); });
+  applyZoom();
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && ov.classList.contains('open')) close(); });
+})();

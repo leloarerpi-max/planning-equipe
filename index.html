@@ -649,6 +649,26 @@
   .chart-legend span{ display:inline-flex; align-items:center; gap:6px; }
   .chart-legend i{ display:inline-block; width:18px; height:0; border-top-width:3px; border-top-style:solid; }
 
+
+
+  /* Google Sheet « Urgences compagnies » en pop-up */
+  .btn-urg{ background:#F6E9D9 !important; border-color:#B9702E !important; color:#6e4219 !important; font-weight:600; }
+  .btn-urg:hover{ background:#F0DcC2 !important; }
+  .pl-modal-sheet{ max-width:none; width:calc(100vw - 32px); height:calc(100vh - 32px); max-height:none; display:flex; flex-direction:column; overflow:hidden; }
+  #sheetOverlay{ padding:16px; }
+  .sheet-live{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--teal); font-weight:600; }
+  .sheet-live-dot{ width:7px; height:7px; border-radius:50%; background:var(--teal); }
+  .sheet-minimal{ margin-left:auto; font-size:12px; }
+  .sheet-icons{ display:flex; align-items:center; gap:2px; }
+  .sheet-ib{ width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border:1px solid transparent; border-radius:3px; background:transparent; color:var(--ink); font-size:15px; text-decoration:none; padding:0; }
+  .sheet-ib:hover{ background:#fff; border-color:var(--line-strong); }
+  .pl-modal-sheet .pl-close{ margin-left:6px; }
+  .sheet-frame-wrap{ flex:1; min-height:0; background:#fff; position:relative; overflow:hidden; }
+  .sheet-frame-wrap iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; display:block; transform-origin:0 0; }
+  .sheet-zoom{ display:flex; border:1px solid var(--line-strong); border-radius:var(--radius); overflow:hidden; }
+  .sheet-zoom button{ border:none; border-radius:0; background:#fff; color:var(--ink); padding:3px 9px; font-size:12.5px; min-width:30px; }
+  .sheet-zoom button:hover{ background:var(--paper); }
+  .sheet-zoom #btnSheetZoomReset{ min-width:54px; font-variant-numeric:tabular-nums; border-left:1px solid var(--line); border-right:1px solid var(--line); }
   @media (max-width:700px){
     .pl-actions{ margin-left:0; }
     .pl-side{ max-width:none; }
@@ -706,12 +726,14 @@
     </div>
     <div class="pl-actions">
       <button class="btn btn-primary" id="btnAddTask">+ Tâche</button>
-      <button class="btn" id="btnAddPerson">+ Personne</button>
+      <button class="btn btn-urg" id="btnSheetUrg" title="Ouvrir le Google Sheet des urgences compagnies (GESTION EASY + PREMIUM, Pierrick)">🚨 Urgences cies</button>
       <button class="btn" id="btnStats">📊 Statistiques</button>
       <button class="btn" id="btnJournal">🕒 Journal</button>
       <div class="pl-more">
         <button class="btn" id="btnMore" aria-haspopup="true" aria-expanded="false">Plus ▾</button>
         <div class="pl-more-menu" id="moreMenu" role="menu">
+          <button class="btn-menu" id="btnAddPerson" role="menuitem">👤 Ajouter une personne</button>
+          <div class="pl-menu-sep"></div>
           <button class="btn-menu" id="btnExport" role="menuitem">⬇️ Exporter ce jour</button>
           <button class="btn-menu" id="btnImport" role="menuitem">⬆️ Importer</button>
           <button class="btn-menu" id="btnExportAll" role="menuitem" title="Sauvegarde complète : Planning + tous les onglets (Suivi Excel, Avenants WF, etc.)">💾 Tout exporter (sauvegarde complète)</button>
@@ -750,6 +772,35 @@
         <div class="empty-note">Chargement…</div>
       </div>
     </aside>
+  </div>
+
+
+  <!-- Google Sheet « Urgences compagnies » en pop-up : c'est le VRAI Sheet (lien de modification),
+       pas une copie « Publier sur le Web ». Pour changer de Sheet ou d'onglet, modifier data-sheet-url. -->
+  <div class="pl-overlay" id="sheetOverlay"
+    data-sheet-url="https://docs.google.com/spreadsheets/d/1VcJBtwodD6n38rRjPU0umVHsv7aH9DAaoT1y1SVsQSI/edit?gid=317464362">
+    <div class="pl-modal pl-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="pl-modal-head">
+        <h2 id="sheetTitle">🚨 Urgences compagnies</h2>
+        <span class="hint">GESTION EASY + PREMIUM (Pierrick)</span>
+        <span class="sheet-live"><span class="sheet-live-dot"></span>Enregistré en direct dans le Google Sheet</span>
+        <label class="pl-check sheet-minimal"><input type="checkbox" id="sheetMinimal" /> Masquer les menus Google</label>
+        <div class="sheet-zoom" role="group" aria-label="Taille d'affichage du Sheet">
+          <button type="button" id="btnSheetZoomOut" title="Réduire l'affichage (voir plus de colonnes)" aria-label="Réduire l'affichage">−</button>
+          <button type="button" id="btnSheetZoomReset" title="Revenir à la taille par défaut (85 %)">85 %</button>
+          <button type="button" id="btnSheetZoomIn" title="Agrandir l'affichage" aria-label="Agrandir l'affichage">+</button>
+        </div>
+        <div class="sheet-icons">
+          <button type="button" class="sheet-ib" id="btnSheetReload" title="Recharger le Sheet" aria-label="Recharger le Sheet">↻</button>
+          <a class="sheet-ib" id="sheetOpenLink" target="_blank" rel="noopener" title="Ouvrir dans Google Sheets (nouvel onglet)" aria-label="Ouvrir dans Google Sheets">↗</a>
+          <span class="info-dot" tabindex="0" title="C'est le vrai Google Sheet : ce que tu modifies ici est enregistré directement dedans, au nom de ton compte Google. S'il demande de se connecter ou n'est pas modifiable : connecte-toi à ton compte Google dans ce navigateur, puis clique sur ↻. En dernier recours : ↗ pour l'ouvrir dans un nouvel onglet.">i</span>
+        </div>
+        <button class="pl-close" data-close="sheet" aria-label="Fermer">✕</button>
+      </div>
+      <div class="sheet-frame-wrap">
+        <iframe id="sheetFrame" title="Google Sheet — Urgences compagnies (GESTION EASY + PREMIUM, Pierrick)" allow="clipboard-read; clipboard-write"></iframe>
+      </div>
+    </div>
   </div>
 
   <div class="pl-overlay" id="journalOverlay">
