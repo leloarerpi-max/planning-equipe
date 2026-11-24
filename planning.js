@@ -1321,6 +1321,24 @@ async function computeAndRenderStats(){
     }
   });
 
+  // Urgences importées pour des jours qui n'ont pas de page dans le Planning
+  try{
+    const extraUrg = await storageGet(URG_IMPORT_KEY);
+    if(extraUrg && typeof extraUrg === 'object'){
+      Object.keys(extraUrg).forEach(iso => {
+        if(daysIndex.includes(iso)) return;   // ce jour a sa page : déjà compté ci-dessus
+        const monthKey = iso.slice(0, 7);
+        Object.keys(extraUrg[iso] || {}).forEach(pid => {
+          if(!people.some(p => p.id === pid)) return;
+          const val = Number(extraUrg[iso][pid]) || 0;
+          if(!val) return;
+          monthlyUrgences[monthKey] = monthlyUrgences[monthKey] || {};
+          monthlyUrgences[monthKey][pid] = (monthlyUrgences[monthKey][pid] || 0) + val;
+        });
+      });
+    }
+  } catch(e){}
+
   loading.style.display = 'none';
 
   // Totals cards
@@ -1438,6 +1456,7 @@ function moveRepartitionToBottom(){
    - Les chiffres sont aussi écrits dans « Urgences » de chaque jour du Planning.
    - Rien n'est gardé du fichier : seuls les chiffres par jour sont écrits dans « Urgences du jour ».
    ========================================================================== */
+const URG_IMPORT_KEY = 'po:urgences-import';   // urgences importées pour des jours sans page dans le Planning
 function urgNameKey(raw){
   return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
@@ -1473,9 +1492,21 @@ function urgParseWorkbook(wb){
     rows.forEach(r => { const iso = urgIsoFromCell(r[0]); if(iso && iso > latest) latest = iso; });
     if(!best || latest > best.latest) best = {nm, rows, latest};
   });
+  // Les lignes plus anciennes sont déplacées dans l'onglet « Historique EASY » : on le lit aussi.
+  const histNames = wb.SheetNames.filter((nm, i) => !(metas[i] && metas[i].Hidden) && /^\s*historique/i.test(nm));
+  const lineKey = (iso, r) => iso + '|' + String(r[3] == null ? '' : r[3]).replace(/\s+/g, '').toUpperCase() + '|' + String(r[1] == null ? '' : r[1]).replace(/\s+/g, ' ').trim().toUpperCase();
+  const gestionKeys = new Set();
+  best.rows.forEach(r => { const iso = urgIsoFromCell(r[0]); if(iso) gestionKeys.add(lineKey(iso, r)); });
+  const allRows = best.rows.slice();
+  histNames.forEach(nm => {
+    XLSX.utils.sheet_to_json(wb.Sheets[nm], {header: 1, raw: true, defval: null}).forEach(r => {
+      const iso = urgIsoFromCell(r[0]);
+      if(iso && !gestionKeys.has(lineKey(iso, r))) allRows.push(r);   // déjà présente dans GESTION : pas comptée deux fois
+    });
+  });
   const days = {}, names = {};
   let n = 0, skipped = 0;
-  best.rows.forEach(r => {
+  allRows.forEach(r => {
     const iso = urgIsoFromCell(r[0]);
     if(!iso) return;
     const raw = r[8];   // colonne I : la personne de l'équipe qui a traité l'urgence
@@ -1487,7 +1518,7 @@ function urgParseWorkbook(wb){
     days[iso][key] = (days[iso][key] || 0) + 1;
     n++;
   });
-  return {sheet: best.nm, days, names, count: n, skipped};
+  return {sheet: best.nm, histSheets: histNames, days, names, count: n, skipped};
 }
 async function urgImportFile(file){
   if(typeof XLSX === 'undefined'){ alert("La lecture d'Excel n'est pas disponible (connexion ?)."); return; }
@@ -1503,6 +1534,12 @@ async function urgImportFile(file){
   // Écrit aussi dans le panneau « Urgences » de chaque jour du Planning (jours existants, personnes reconnues)
   const byKey = {};
   people.forEach(p => { byKey[urgNameKey(p.name)] = p.id; });
+  // Abréviations du Sheet (ex. « CHA » pour Charlotte) : début de prénom, s'il ne désigne qu'une seule personne
+  Object.keys(parsed.names).forEach(k => {
+    if(byKey[k] || k.length < 3) return;
+    const hits = people.filter(p => urgNameKey(p.name).startsWith(k));
+    if(hits.length === 1) byKey[k] = hits[0].id;
+  });
   const unknown = new Set();
   let written = 0;
   const isoDays = Object.keys(parsed.days).filter(d => d >= fromIso && daysIndex.includes(d));
@@ -1521,10 +1558,36 @@ async function urgImportFile(file){
       written++;
     } catch(e){ /* on continue avec les autres jours */ }
   }
-  Object.keys(parsed.days).forEach(iso => { if(iso >= fromIso && !daysIndex.includes(iso)) Object.keys(parsed.days[iso]).forEach(k => { if(!byKey[k]) unknown.add(parsed.names[k] || k); }); });
+  // Jours qui n'existent pas dans le Planning : enregistrés à part (po:urgences-import) pour que les statistiques les comptent quand même
+  const extra = {};
+  Object.keys(parsed.days).forEach(iso => {
+    if(iso < fromIso || daysIndex.includes(iso)) return;
+    Object.keys(parsed.days[iso]).forEach(k => {
+      if(!byKey[k]){ unknown.add(parsed.names[k] || k); return; }
+      extra[iso] = extra[iso] || {};
+      extra[iso][byKey[k]] = (extra[iso][byKey[k]] || 0) + parsed.days[iso][k];
+    });
+  });
+  const extraDays = Object.keys(extra).length;
+  if(extraDays){
+    try{
+      await storageTransaction(URG_IMPORT_KEY, cur => {
+        const o = (cur && typeof cur === 'object') ? cur : {};
+        Object.keys(extra).forEach(iso => { o[iso] = extra[iso]; });
+        return o;
+      });
+    } catch(e){ /* les jours du Planning restent mis à jour */ }
+  }
+  const allIso = Object.keys(parsed.days).sort();
   try{ dayData = await loadDayData(currentDate, {force: true}); renderTable(); } catch(e){}
-  logChange(`a importé le fichier des urgences (${parsed.count} urgences, ${written} jours du planning mis à jour)`);
-  alert(`Import terminé : ${parsed.count} urgences lues sur ${nbDays} jours.\n${written} jour(s) du Planning mis à jour.` + (unknown.size ? `\nNoms non trouvés dans l'équipe (ignorés dans le Planning) : ${Array.from(unknown).join(', ')}` : ''));
+  logChange(`a importé le fichier des urgences (${parsed.count} urgences, ${written} jours du planning mis à jour, ${extraDays} jours hors planning pour les statistiques)`);
+  const fmt = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+  alert(`Import terminé : ${parsed.count} urgences lues sur ${nbDays} jours (du ${fmt(allIso[0])} au ${fmt(allIso[allIso.length - 1])}).`
+    + `\nOnglets lus : ${[parsed.sheet].concat(parsed.histSheets || []).join(' + ')}`
+    + `\n${written} jour(s) du Planning mis à jour.`
+    + (extraDays ? `\n${extraDays} autre(s) jour(s) sans page dans le Planning : comptés dans les statistiques.` : '')
+    + (parsed.skipped ? `\n${parsed.skipped} ligne(s) sans prénom de gestionnaire (colonne I) : non comptées.` : '')
+    + (unknown.size ? `\nNoms non trouvés dans l'équipe (ignorés) : ${Array.from(unknown).join(', ')}` : ''));
 }
 /* Bouton d'import dans le panneau « Urgences du jour » (créé une seule fois) */
 function ensureUrgImportButton(){
