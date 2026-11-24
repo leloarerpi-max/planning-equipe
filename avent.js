@@ -93,7 +93,7 @@
   function saveStrike(s){ ls.set(LS_STRIKE, JSON.stringify(Array.from(s))); }
 
   let votes = {};   // { prénom: {suspect, at} }
-  let open = ls.get(LS_OPEN, '0') === '1';
+  let open = ls.get(LS_OPEN, '1') === '1';   // déplié par défaut ; chacun peut le replier (gardé sur son poste)
   let panel = null;   // 'carnet' | 'suspects' | 'vote' | 'cles' | null
 
   function readMin(e){ return Math.max(1, Math.round((e.words || 400) / 170)); }
@@ -189,9 +189,9 @@
     if(mounted && host.isConnected) return true;
     const sec = document.getElementById('app-tab-planning');
     if(!sec) return false;
-    const h1 = sec.querySelector('h1');
-    const desc = h1 && h1.nextElementSibling;
-    if(desc) desc.insertAdjacentElement('afterend', host); else sec.insertBefore(host, sec.firstChild);
+    // Bandeau placé juste sous l'en-tête du Planning (titre + jours)
+    const head = sec.querySelector('header');
+    if(head) head.insertAdjacentElement('afterend', host); else sec.insertBefore(host, sec.firstChild);
     mounted = true;
     return true;
   }
