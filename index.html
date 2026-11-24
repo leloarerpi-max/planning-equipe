@@ -491,7 +491,7 @@
     display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--panel);
     border:1px solid var(--line-strong); border-radius:var(--radius); padding:7px 10px; margin-bottom:12px;
   }
-  .pl-search{ display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:4px 8px; width:220px; color:var(--ink-soft); }
+  .pl-search{ display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:4px 8px; width:180px; color:var(--ink-soft); }
   .pl-search input{ border:none; outline:none; background:transparent; font:inherit; font-size:12.5px; width:100%; color:var(--ink); }
   .pl-search:focus-within{ border-color:var(--violet); }
   .pl-toolbar .filters{ margin:0; gap:6px; }
@@ -502,7 +502,7 @@
   .pl-seg button{ border:none; border-radius:0; background:#fff; color:var(--ink); padding:4px 10px; font-size:12px; }
   .pl-seg button.on{ background:var(--violet); color:#fff; font-weight:600; }
   .pl-actions{ margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .pl-actions .btn{ font-size:12.5px; padding:5px 11px; }
+  .pl-actions .btn{ font-size:12.5px; padding:5px 9px; }
   .btn-primary{ background:var(--ink) !important; border-color:var(--ink) !important; color:#fff !important; font-weight:600; }
   .btn-primary:hover{ background:#3a3733 !important; }
   .pl-more{ position:relative; }
@@ -671,7 +671,6 @@
     <div class="daybar" id="dayBar"></div>
     <div class="pl-head-right">
       <div class="status" id="status"></div>
-      <button class="btn" id="btnToggleAdmin">🔒 Mode superviseur</button>
     </div>
   </header>
 
@@ -682,7 +681,7 @@
   <div class="pl-toolbar" role="toolbar" aria-label="Filtres et actions">
     <label class="pl-search">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-      <input type="search" id="filterSearch" placeholder="Rechercher une tâche…" aria-label="Rechercher une tâche" autocomplete="off" />
+      <input type="search" id="filterSearch" placeholder="Rechercher…" aria-label="Rechercher une tâche" autocomplete="off" />
     </label>
     <div class="filters">
       <select id="filterPerson" aria-label="Filtrer par personne"><option value="">Toutes les personnes</option></select>
@@ -721,6 +720,7 @@
           <button class="btn-menu btn-menu-danger" id="btnClearDay" role="menuitem">Vider les statuts de ce jour</button>
         </div>
       </div>
+      <button class="btn" id="btnToggleAdmin" title="Mode superviseur">🔒 Superviseur</button>
     </div>
     <input type="file" id="importFileInput" accept="application/json" style="display:none;" />
   </div>

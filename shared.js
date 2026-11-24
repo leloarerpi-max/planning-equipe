@@ -181,7 +181,10 @@ function toggleAdmin(){
 }
 function setAdminButtonLabel(){
   const btn = document.getElementById('btnToggleAdmin');
-  if(btn) btn.textContent = isAdmin ? '🔓 Verrouiller les objectifs' : '🔒 Mode superviseur';
+  if(btn){
+    btn.textContent = isAdmin ? '🔓 Verrouiller' : '🔒 Superviseur';
+    btn.title = isAdmin ? 'Quitter le mode superviseur (verrouiller les objectifs)' : 'Mode superviseur';
+  }
   const resetBtn = document.getElementById('btnResetAll');
   if(resetBtn){
     resetBtn.style.opacity = isAdmin ? '1' : '.45';
