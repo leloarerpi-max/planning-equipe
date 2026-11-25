@@ -681,6 +681,23 @@
     .pl-overlay{ padding:0; }
     .pl-modal{ max-height:100vh; border-radius:0; }
   }
+
+  /* ===== Écran VERTICAL (ordinateur) : résumé du jour en 2 colonnes sous le tableau. L'affichage horizontal ne change pas. ===== */
+  @media (orientation:portrait) and (min-width:701px){
+    .pl-main{ display:block; }
+    .pl-left{ margin-bottom:14px; }
+    .pl-side{
+      max-width:none; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      grid-template-rows:auto auto auto; column-gap:14px; row-gap:0; align-items:start;
+    }
+    .pl-side > *{ margin:0 0 12px; min-width:0; }
+    .pl-side > .team-objectif{ grid-column:1; grid-row:1; }
+    .pl-side > #summaryByPerson{ grid-column:1; grid-row:2 / 4; }
+    .pl-side > #urgencesPanel{ grid-column:2; grid-row:1 / 3; }
+    .pl-side > .suivi-row{ grid-column:2; grid-row:3; }
+    .pl-side .bar-row .bar-label{ width:92px; }
+    .pl-side .bar-row .bar-count{ width:46px; }
+  }
 </style>
 </head>
 <body>
