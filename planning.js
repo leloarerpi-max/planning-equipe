@@ -639,7 +639,6 @@ function taskRowHtml(t, isGroupStart){
   }
 
   let peopleCells;
-  const SLOT_NAMES = ['primary', 'helper', 'helper2'];
   if(t.multiMode){
     const boxes = people.map(p => {
       const checked = t.personIds.includes(p.id);
@@ -650,33 +649,15 @@ function taskRowHtml(t, isGroupStart){
         <span>${checked?'✓ ':''}${escapeHtml(p.name)}</span>
       </label>`;
     }).join('');
-    peopleCells = `<td class="person-slot-cell checklist-cell team-cell team-multi" colspan="3"><div class="checklist-group">${boxes}</div></td>`;
+    peopleCells = `<td class="person-slot-cell checklist-cell" colspan="3"><div class="checklist-group">${boxes}</div></td>`;
   } else {
-    // Une seule colonne « Équipe » : une pastille par personne déjà mise (Personne, Aide, Aide 2),
-    // puis un petit « + » pour ajouter la suivante. Même enregistrement qu'avant (onPersonSlotChange).
-    const ids = [primaryId, helperId, helper2Id];
-    let chips = '';
-    ids.forEach((pid, i) => {
-      if(!pid) return;
-      chips += slotSelect(SLOT_NAMES[i], pid, ids.filter((x, j) => x && j !== i));
-    });
-    const filled = ids.filter(Boolean).length;
-    let addSel = '';
-    if(filled < 3 && editable){
-      const taken = ids.filter(Boolean);
-      const opts = people.filter(p => !taken.includes(p.id));
-      if(!taken.includes(EXPRESS_ID)) opts.push({id: EXPRESS_ID, name: EXPRESS_NAME});
-      const slotLabel = ['une personne', 'une aide', 'une 2e aide'][filled];
-      addSel = `<select class="person-slot-select slot-add" data-slot="${SLOT_NAMES[filled]}" title="Ajouter ${slotLabel}" aria-label="Ajouter ${slotLabel}">
-        <option value="">+</option>
-        ${opts.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
-      </select>`;
-    }
-    peopleCells = `<td class="person-slot-cell team-cell"><div class="team-in">${chips}${addSel}${(!chips && !addSel) ? '<span style="color:var(--ink-soft);">—</span>' : ''}</div></td>`;
+    peopleCells = `<td class="person-slot-cell">${slotSelect('primary', primaryId, [helperId, helper2Id].filter(Boolean))}</td>
+    <td class="person-slot-cell">${slotSelect('helper', helperId, [primaryId, helper2Id].filter(Boolean))}</td>
+    <td class="person-slot-cell">${slotSelect('helper2', helper2Id, [primaryId, helperId].filter(Boolean))}</td>`;
   }
 
   const statusNombreCells = t.multiMode
-    ? ''
+    ? `<td class="status-cell"></td><td class="obj-cell"></td>`
     : `<td class="status-cell"><select class="status-select ${stCls}" data-field="status" ${dis}>
       <option value="" ${t.status===''?'selected':''}>—</option>
       <option value="fait" ${t.status==='fait'?'selected':''}>Fait</option>
@@ -689,7 +670,7 @@ function taskRowHtml(t, isGroupStart){
   }[t.priority || ''];
   const priorityTitle = 'Couleur : ' + PRIORITY_LABELS[t.priority || ''] + ' (cliquer pour changer)';
 
-  return `<tr class="task-row ${rowCls}${isGroupStart ? ' group-start' : ''}${(!t.multiMode && t.status === 'fait') ? ' is-done' : ''}" data-task="${t.id}">
+  return `<tr class="task-row ${rowCls}${isGroupStart ? ' group-start' : ''}" data-task="${t.id}">
     <td class="task-name"><div class="tn-in">
       <button type="button" class="priority-dot" data-action="cycle-priority" title="${priorityTitle}" style="background:${priorityDot};" ${dis}></button>
       <input type="text" value="${escapeHtml(t.name)}" title="${escapeHtml(t.name)}" data-field="name" ${dis} />
@@ -765,50 +746,20 @@ function renderTable(){
     return;
   }
   const f = currentFilters();
-  const filtered = sortTasksByPriority(dayData.tasks.filter(t => taskMatchesFilters(t, f)));
-  // Recherche et « Masquer les faites » : uniquement l'affichage du tableau (le bilan du jour ne change pas)
-  const view = tableViewOptions();
-  const visible = filtered.filter(t => {
-    if(view.hideDone && !t.multiMode && t.status === 'fait') return false;
-    if(view.search && !normSearch(t.name).includes(view.search)) return false;
-    return true;
-  });
+  const visible = sortTasksByPriority(dayData.tasks.filter(t => taskMatchesFilters(t, f)));
 
   if(!visible.length){
     shell.innerHTML = '<div class="empty-note">Aucune tâche ne correspond aux filtres.</div>';
   } else {
-    const collapsed = getCollapsedGroups();
-    const GROUP_DOT = {rose:'#C9605A', peche:'#C9903E', bleu:'#4A7FC1', '':'transparent'};
-    let html = '<table><thead><tr><th>Tâche <span style="font-weight:400;">· ' + visible.length + ' affichée' + (visible.length > 1 ? 's' : '') + '</span></th><th>Équipe</th><th style="text-align:center;">Statut</th><th style="text-align:right;padding-right:16px;">Nombre</th><th></th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>Tâche</th><th style="text-align:center;">Personne</th><th style="text-align:center;">Aide</th><th style="text-align:center;">Aide 2</th><th style="text-align:center;">Statut</th><th>Nombre</th><th></th></tr></thead><tbody>';
     let prevPriority = null;
     visible.forEach((t, i) => {
-      const pr = t.priority || '';
-      if(pr !== prevPriority){
-        // En-tête de groupe (sans le nom de la couleur) : compte sur toutes les tâches du jour de cette couleur
-        const all = dayData.tasks.filter(x => (x.priority || '') === pr && !x.multiMode);
-        const done = all.filter(x => x.status === 'fait').length;
-        const open = !collapsed[pr || 'none'];
-        const pct = all.length ? Math.round(done / all.length * 100) : 0;
-        html += `<tr class="grp-head"><td colspan="5"><button type="button" class="grp-btn" data-grp="${pr || 'none'}" aria-expanded="${open}" title="${open ? 'Replier' : 'Déplier'} ce groupe">
-          <span class="chev" aria-hidden="true">▶</span>
-          <span class="grp-dot" style="background:${GROUP_DOT[pr]};"></span>
-          <span>${all.length} tâche${all.length > 1 ? 's' : ''} · ${done} faite${done > 1 ? 's' : ''}</span>
-          <span class="grp-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
-        </button></td></tr>`;
-      }
-      const isGroupStart = i > 0 && pr !== prevPriority;
-      prevPriority = pr;
-      if(collapsed[pr || 'none']) return;
+      const isGroupStart = i > 0 && (t.priority || '') !== prevPriority;
+      prevPriority = t.priority || '';
       html += taskRowHtml(t, isGroupStart);
     });
     html += '</tbody></table>';
     shell.innerHTML = html;
-    shell.querySelectorAll('.grp-btn').forEach(b => b.addEventListener('click', () => {
-      const c = getCollapsedGroups();
-      c[b.dataset.grp] = !c[b.dataset.grp];
-      saveCollapsedGroups(c);
-      renderTable();
-    }));
 
     shell.querySelectorAll('tr[data-task]').forEach(row => {
       const id = row.dataset.task;
@@ -1091,8 +1042,9 @@ function renderSummary(){
       const dot = v.color ? `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${v.color};margin-right:6px;flex-shrink:0;"></i>` : '';
       const targetInput = v.id ? `<input type="number" min="0" class="person-obj-input" data-person="${v.id}" value="${v.target}" placeholder="—" ${isAdmin?'':'disabled title="Réservé au superviseur"'} />` : `<span style="width:52px;display:inline-block;text-align:center;color:var(--ink-soft);">—</span>`;
       const doneDisplay = Number.isInteger(v.done) ? v.done : v.done.toFixed(1);
-      return `<div class="bar-row" data-person-row="${v.id||''}">
-        <div class="bar-label">${dot}${escapeHtml(v.name)}</div>
+      const isPresent = splitPresentSet().has(v.id);
+      return `<div class="bar-row${isPresent ? ' split-on' : ''}" data-person-row="${v.id||''}">
+        <div class="bar-label split-pick" data-split="${v.id}" title="Cliquer : personne présente. L'objectif se calcule tout seul (total à répartir : ${splitDayTotal()})">${dot}${isPresent ? '✓ ' : ''}${escapeHtml(v.name)}</div>
         <div class="bar-track"><div class="bar-fill ${r2?'reached':''}" style="width:${p2}%"></div></div>
         <div class="bar-count">${doneDisplay}${hasTarget ? ' / '+v.target : ''}</div>
         ${targetInput}
@@ -1100,6 +1052,7 @@ function renderSummary(){
     }).join('');
   document.getElementById('summaryByPerson').style.display = rows ? 'block' : 'none';
   document.getElementById('barsByPerson').innerHTML = rows;
+  wireSplitClicks();
   document.querySelectorAll('.person-obj-input').forEach(inp => {
     inp.addEventListener('change', async () => {
       const p = people.find(x => x.id === inp.dataset.person);
@@ -1107,11 +1060,97 @@ function renderSummary(){
       dayData.targets = dayData.targets || {};
       // '' = objectif vidé pour ce jour (masque aussi l'ancienne valeur globale)
       dayData.targets[p.id] = inp.value === '' ? '' : Math.max(0, Number(inp.value));
+      splitLsSet('po-present:' + currentDate, '[]'); // saisie à la main : fin du calcul automatique pour ce jour
       await syncUrgences(); // fusionne avec les tâches du serveur puis enregistre (urgences + objectifs)
       updatePersonBarRowInPlace(p.id);
     });
   });
   wirePersonObjNav();
+  autoSplitIfNeeded();
+}
+
+
+
+/* ---------- Répartition automatique des objectifs ----------
+   Superviseur : on clique sur le prénom des personnes présentes dans « Objectif par personne ».
+   Objectif de chacun = total des « Nombre » des tâches du jour ÷ nombre de présents
+   (le reste est donné une unité par une unité aux premiers). Les non-cochés n'ont pas d'objectif ce jour-là. */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+  .bar-label.split-pick{ cursor:pointer; border-radius:12px; padding:2px 8px; margin-left:-8px; }
+  .bar-label.split-pick:hover{ background:rgba(201,138,43,.18); }
+  .bar-row.split-on .bar-label{ font-weight:700; color:var(--ink,#2c2417); }
+  .bar-row.split-on .bar-label.split-pick{ background:rgba(201,138,43,.22); }
+  `;
+  document.head.appendChild(st);
+})();
+function splitLsGet(k){ try{ return localStorage.getItem(k); } catch(e){ return null; } }
+function splitLsSet(k, v){ try{ localStorage.setItem(k, v); } catch(e){} }
+function splitDayTotal(){ return (dayData.tasks || []).reduce((sum, t) => sum + (Number(t.objectif) || 0), 0); }
+function splitPresentSet(){
+  const raw = splitLsGet('po-present:' + currentDate);
+  if(raw !== null){ try{ return new Set(JSON.parse(raw)); } catch(e){} }
+  return new Set(); // rien de coché tant que le superviseur n'a pas cliqué
+}
+function splitShares(total, ids){
+  const n = ids.length; if(!n) return {};
+  const base = Math.floor(total / n); let rest = total - base * n;
+  const out = {};
+  ids.forEach(id => { out[id] = base + (rest > 0 ? 1 : 0); if(rest > 0) rest--; });
+  return out;
+}
+
+// Les objectifs suivent le total des tâches : si le total change (« Nombre » modifié, tâche ajoutée…),
+// les objectifs des personnes cochées sont recalculés automatiquement.
+let splitAutoBusy = false;
+function autoSplitIfNeeded(){
+  if(splitAutoBusy) return;
+  const pres = people.map(p => p.id).filter(id => splitPresentSet().has(id));
+  if(!pres.length) return;
+  const sh = splitShares(splitDayTotal(), pres);
+  let diff = false;
+  people.forEach(p => {
+    const want = (p.id in sh) ? sh[p.id] : '';
+    const cur = targetForPerson(p); const curN = (cur === '' || cur == null) ? '' : Number(cur);
+    if(curN !== want) diff = true;
+  });
+  if(!diff) return;
+  splitAutoBusy = true;
+  dayData.targets = dayData.targets || {};
+  people.forEach(p => { dayData.targets[p.id] = (p.id in sh) ? sh[p.id] : ''; });
+  renderSummary();
+  syncUrgences().finally(() => { splitAutoBusy = false; });
+}
+
+let splitClicksWired = false;
+function wireSplitClicks(){
+  if(splitClicksWired) return;
+  const box = document.getElementById('barsByPerson'); if(!box) return;
+  splitClicksWired = true;
+  box.addEventListener('click', e => {
+    const el = e.target.closest('[data-split]'); if(!el) return;
+    const id = el.dataset.split;
+    const cur = splitPresentSet(); if(cur.has(id)) cur.delete(id); else cur.add(id);
+    splitLsSet('po-present:' + currentDate, JSON.stringify([...cur]));
+    applySplit();
+  });
+}
+async function applySplit(){
+  const pres = people.map(p => p.id).filter(id => splitPresentSet().has(id));
+  const total = splitDayTotal();
+  const prev = {}; people.forEach(p => { const v = targetForPerson(p); prev[p.id] = (v === '' || v == null) ? '' : v; });
+  const sh = splitShares(total, pres);
+  dayData.targets = dayData.targets || {};
+  people.forEach(p => { dayData.targets[p.id] = (p.id in sh) ? sh[p.id] : ''; });
+  renderSummary();
+  await syncUrgences();
+  showUndoToast('Objectifs répartis', async () => {
+    people.forEach(p => { dayData.targets[p.id] = prev[p.id]; });
+    splitLsSet('po-present:' + currentDate, JSON.stringify(people.filter(p => prev[p.id] !== '' && Number(prev[p.id]) > 0).map(p => p.id)));
+    renderSummary();
+    await syncUrgences();
+  });
 }
 
 let lastByPersonStats = {};
@@ -1227,8 +1266,9 @@ document.getElementById('btnStats').addEventListener('click', toggleStatsPanel);
 document.getElementById('btnJournal').addEventListener('click', toggleJournalPanel);
 let journalOpen = false;
 async function toggleJournalPanel(){
+  const panel = document.getElementById('journalPanel');
   journalOpen = !journalOpen;
-  setOverlayOpen('journalOverlay', journalOpen);
+  panel.style.display = journalOpen ? 'block' : 'none';
   if(journalOpen) await loadJournal();
 }
 async function loadJournal(){
@@ -1256,8 +1296,9 @@ async function loadJournal(){
 }
 let statsOpen = false;
 async function toggleStatsPanel(){
+  const panel = document.getElementById('statsPanel');
   statsOpen = !statsOpen;
-  setOverlayOpen('statsOverlay', statsOpen);
+  panel.style.display = statsOpen ? 'block' : 'none';
   if(statsOpen) await computeAndRenderStats();
 }
 
@@ -1320,24 +1361,6 @@ async function computeAndRenderStats(){
       });
     }
   });
-
-  // Urgences importées pour des jours qui n'ont pas de page dans le Planning
-  try{
-    const extraUrg = await storageGet(URG_IMPORT_KEY);
-    if(extraUrg && typeof extraUrg === 'object'){
-      Object.keys(extraUrg).forEach(iso => {
-        if(daysIndex.includes(iso)) return;   // ce jour a sa page : déjà compté ci-dessus
-        const monthKey = iso.slice(0, 7);
-        Object.keys(extraUrg[iso] || {}).forEach(pid => {
-          if(!people.some(p => p.id === pid)) return;
-          const val = Number(extraUrg[iso][pid]) || 0;
-          if(!val) return;
-          monthlyUrgences[monthKey] = monthlyUrgences[monthKey] || {};
-          monthlyUrgences[monthKey][pid] = (monthlyUrgences[monthKey][pid] || 0) + val;
-        });
-      });
-    }
-  } catch(e){}
 
   loading.style.display = 'none';
 
@@ -1456,7 +1479,6 @@ function moveRepartitionToBottom(){
    - Les chiffres sont aussi écrits dans « Urgences » de chaque jour du Planning.
    - Rien n'est gardé du fichier : seuls les chiffres par jour sont écrits dans « Urgences du jour ».
    ========================================================================== */
-const URG_IMPORT_KEY = 'po:urgences-import';   // urgences importées pour des jours sans page dans le Planning
 function urgNameKey(raw){
   return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
@@ -1492,21 +1514,9 @@ function urgParseWorkbook(wb){
     rows.forEach(r => { const iso = urgIsoFromCell(r[0]); if(iso && iso > latest) latest = iso; });
     if(!best || latest > best.latest) best = {nm, rows, latest};
   });
-  // Les lignes plus anciennes sont déplacées dans l'onglet « Historique EASY » : on le lit aussi.
-  const histNames = wb.SheetNames.filter((nm, i) => !(metas[i] && metas[i].Hidden) && /^\s*historique/i.test(nm));
-  const lineKey = (iso, r) => iso + '|' + String(r[3] == null ? '' : r[3]).replace(/\s+/g, '').toUpperCase() + '|' + String(r[1] == null ? '' : r[1]).replace(/\s+/g, ' ').trim().toUpperCase();
-  const gestionKeys = new Set();
-  best.rows.forEach(r => { const iso = urgIsoFromCell(r[0]); if(iso) gestionKeys.add(lineKey(iso, r)); });
-  const allRows = best.rows.slice();
-  histNames.forEach(nm => {
-    XLSX.utils.sheet_to_json(wb.Sheets[nm], {header: 1, raw: true, defval: null}).forEach(r => {
-      const iso = urgIsoFromCell(r[0]);
-      if(iso && !gestionKeys.has(lineKey(iso, r))) allRows.push(r);   // déjà présente dans GESTION : pas comptée deux fois
-    });
-  });
   const days = {}, names = {};
   let n = 0, skipped = 0;
-  allRows.forEach(r => {
+  best.rows.forEach(r => {
     const iso = urgIsoFromCell(r[0]);
     if(!iso) return;
     const raw = r[8];   // colonne I : la personne de l'équipe qui a traité l'urgence
@@ -1518,7 +1528,7 @@ function urgParseWorkbook(wb){
     days[iso][key] = (days[iso][key] || 0) + 1;
     n++;
   });
-  return {sheet: best.nm, histSheets: histNames, days, names, count: n, skipped};
+  return {sheet: best.nm, days, names, count: n, skipped};
 }
 async function urgImportFile(file){
   if(typeof XLSX === 'undefined'){ alert("La lecture d'Excel n'est pas disponible (connexion ?)."); return; }
@@ -1534,12 +1544,6 @@ async function urgImportFile(file){
   // Écrit aussi dans le panneau « Urgences » de chaque jour du Planning (jours existants, personnes reconnues)
   const byKey = {};
   people.forEach(p => { byKey[urgNameKey(p.name)] = p.id; });
-  // Abréviations du Sheet (ex. « CHA » pour Charlotte) : début de prénom, s'il ne désigne qu'une seule personne
-  Object.keys(parsed.names).forEach(k => {
-    if(byKey[k] || k.length < 3) return;
-    const hits = people.filter(p => urgNameKey(p.name).startsWith(k));
-    if(hits.length === 1) byKey[k] = hits[0].id;
-  });
   const unknown = new Set();
   let written = 0;
   const isoDays = Object.keys(parsed.days).filter(d => d >= fromIso && daysIndex.includes(d));
@@ -1558,36 +1562,10 @@ async function urgImportFile(file){
       written++;
     } catch(e){ /* on continue avec les autres jours */ }
   }
-  // Jours qui n'existent pas dans le Planning : enregistrés à part (po:urgences-import) pour que les statistiques les comptent quand même
-  const extra = {};
-  Object.keys(parsed.days).forEach(iso => {
-    if(iso < fromIso || daysIndex.includes(iso)) return;
-    Object.keys(parsed.days[iso]).forEach(k => {
-      if(!byKey[k]){ unknown.add(parsed.names[k] || k); return; }
-      extra[iso] = extra[iso] || {};
-      extra[iso][byKey[k]] = (extra[iso][byKey[k]] || 0) + parsed.days[iso][k];
-    });
-  });
-  const extraDays = Object.keys(extra).length;
-  if(extraDays){
-    try{
-      await storageTransaction(URG_IMPORT_KEY, cur => {
-        const o = (cur && typeof cur === 'object') ? cur : {};
-        Object.keys(extra).forEach(iso => { o[iso] = extra[iso]; });
-        return o;
-      });
-    } catch(e){ /* les jours du Planning restent mis à jour */ }
-  }
-  const allIso = Object.keys(parsed.days).sort();
+  Object.keys(parsed.days).forEach(iso => { if(iso >= fromIso && !daysIndex.includes(iso)) Object.keys(parsed.days[iso]).forEach(k => { if(!byKey[k]) unknown.add(parsed.names[k] || k); }); });
   try{ dayData = await loadDayData(currentDate, {force: true}); renderTable(); } catch(e){}
-  logChange(`a importé le fichier des urgences (${parsed.count} urgences, ${written} jours du planning mis à jour, ${extraDays} jours hors planning pour les statistiques)`);
-  const fmt = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
-  alert(`Import terminé : ${parsed.count} urgences lues sur ${nbDays} jours (du ${fmt(allIso[0])} au ${fmt(allIso[allIso.length - 1])}).`
-    + `\nOnglets lus : ${[parsed.sheet].concat(parsed.histSheets || []).join(' + ')}`
-    + `\n${written} jour(s) du Planning mis à jour.`
-    + (extraDays ? `\n${extraDays} autre(s) jour(s) sans page dans le Planning : comptés dans les statistiques.` : '')
-    + (parsed.skipped ? `\n${parsed.skipped} ligne(s) sans prénom de gestionnaire (colonne I) : non comptées.` : '')
-    + (unknown.size ? `\nNoms non trouvés dans l'équipe (ignorés) : ${Array.from(unknown).join(', ')}` : ''));
+  logChange(`a importé le fichier des urgences (${parsed.count} urgences, ${written} jours du planning mis à jour)`);
+  alert(`Import terminé : ${parsed.count} urgences lues sur ${nbDays} jours.\n${written} jour(s) du Planning mis à jour.` + (unknown.size ? `\nNoms non trouvés dans l'équipe (ignorés dans le Planning) : ${Array.from(unknown).join(', ')}` : ''));
 }
 /* Bouton d'import dans le panneau « Urgences du jour » (créé une seule fois) */
 function ensureUrgImportButton(){
@@ -2010,338 +1988,3 @@ async function importData(e){
    ONGLETS PERSONNALISÉS (comme des feuilles Excel en plus du Planning)
    ========================================================================== */
 init();
-
-/* ==========================================================================
-   NOUVELLE MISE EN PAGE — barre d'outils, fenêtres, raccourcis clavier,
-   couleurs des statistiques et courbe par mois.
-   Ces réglages d'affichage sont gardés sur chaque poste (localStorage) :
-   ils ne touchent à aucune donnée partagée.
-   ========================================================================== */
-const plLocal = {
-  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : v; } catch(e){ return d; } },
-  set(k, v){ try{ localStorage.setItem(k, v); } catch(e){} }
-};
-function normSearch(s){ return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
-function tableViewOptions(){
-  const se = document.getElementById('filterSearch');
-  const hd = document.getElementById('filterHideDone');
-  return { search: se ? normSearch(se.value) : '', hideDone: !!(hd && hd.checked) };
-}
-function getCollapsedGroups(){ try{ return JSON.parse(plLocal.get('pl-collapsed', '{}')) || {}; } catch(e){ return {}; } }
-function saveCollapsedGroups(c){ plLocal.set('pl-collapsed', JSON.stringify(c)); }
-
-/* --- Fenêtres (Statistiques, Journal) ------------------------------------ */
-function setOverlayOpen(id, open){
-  const ov = document.getElementById(id);
-  if(!ov) return;
-  ov.classList.toggle('open', !!open);
-  if(open){ const m = ov.querySelector('.pl-modal'); if(m) m.scrollTop = 0; }
-  document.body.classList.toggle('pl-modal-open', !!document.querySelector('.pl-overlay.open'));
-}
-function closeOverlay(which){
-  if(which === 'stats' && statsOpen){ statsOpen = false; setOverlayOpen('statsOverlay', false); }
-  if(which === 'journal' && journalOpen){ journalOpen = false; setOverlayOpen('journalOverlay', false); }
-}
-document.querySelectorAll('.pl-close[data-close]').forEach(b => b.addEventListener('click', () => closeOverlay(b.dataset.close)));
-[['statsOverlay', 'stats'], ['journalOverlay', 'journal']].forEach(([id, which]) => {
-  const ov = document.getElementById(id);
-  if(ov) ov.addEventListener('click', e => { if(e.target === ov) closeOverlay(which); });
-});
-document.querySelectorAll('.pl-modal-nav a').forEach(a => a.addEventListener('click', e => {
-  const target = document.querySelector(a.getAttribute('href'));
-  if(!target) return;
-  e.preventDefault();
-  target.scrollIntoView({behavior:'smooth', block:'start'});
-}));
-document.addEventListener('keydown', e => {
-  if(e.key !== 'Escape') return;
-  if(document.getElementById('moreMenu')?.classList.contains('open')){ toggleMoreMenu(false); return; }
-  if(statsOpen) closeOverlay('stats'); else if(journalOpen) closeOverlay('journal');
-});
-
-/* --- Barre d'outils : recherche, masquer les faites, densité, menu « Plus » --- */
-(function(){
-  const se = document.getElementById('filterSearch');
-  if(se) se.addEventListener('input', () => renderTable());
-  const hd = document.getElementById('filterHideDone');
-  if(hd){
-    hd.checked = plLocal.get('pl-hide-done', '0') === '1';
-    hd.addEventListener('change', () => { plLocal.set('pl-hide-done', hd.checked ? '1' : '0'); renderTable(); });
-  }
-  function applyDensity(d){
-    document.body.classList.toggle('dens-confort', d === 'confort');
-    document.querySelectorAll('.pl-seg [data-density]').forEach(b => {
-      const on = b.dataset.density === d;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-  }
-  applyDensity(plLocal.get('pl-density', 'compact'));
-  document.querySelectorAll('.pl-seg [data-density]').forEach(b => b.addEventListener('click', () => {
-    plLocal.set('pl-density', b.dataset.density);
-    applyDensity(b.dataset.density);
-  }));
-})();
-function toggleMoreMenu(force){
-  const menu = document.getElementById('moreMenu');
-  const btn = document.getElementById('btnMore');
-  if(!menu || !btn) return;
-  const open = force === undefined ? !menu.classList.contains('open') : !!force;
-  menu.classList.toggle('open', open);
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-(function(){
-  const btn = document.getElementById('btnMore');
-  const menu = document.getElementById('moreMenu');
-  if(!btn || !menu) return;
-  btn.addEventListener('click', e => { e.stopPropagation(); toggleMoreMenu(); });
-  // un clic sur une action ferme le menu (l'action elle-même reste branchée comme avant)
-  menu.addEventListener('click', e => { if(e.target.closest('button')) setTimeout(() => toggleMoreMenu(false), 0); });
-  document.addEventListener('click', e => { if(!e.target.closest('.pl-more')) toggleMoreMenu(false); });
-})();
-
-/* --- Raccourcis clavier dans le tableau des tâches -------------------------
-   Sur une ligne (statut, personne ou pastille de couleur sélectionné) :
-   F = Fait, A = À faire, ↑ / ↓ = même case sur la ligne précédente / suivante.
-   Dans le nom de la tâche : ↑ / ↓ seulement (les lettres s'écrivent normalement).
-   La colonne Nombre garde sa propre navigation (Entrée, ↑, ↓). */
-(function(){
-  const shell = document.getElementById('tableShell');
-  if(!shell) return;
-  function kindOf(el){
-    if(el.matches('select.status-select')) return 'select.status-select';
-    if(el.matches('select.person-slot-select')) return 'select.person-slot-select';
-    if(el.matches('.priority-dot')) return '.priority-dot';
-    if(el.matches('td.task-name input')) return 'td.task-name input';
-    return null;
-  }
-  shell.addEventListener('keydown', e => {
-    const el = e.target;
-    if(!el || !el.closest) return;
-    const row = el.closest('tr.task-row');
-    if(!row || el.classList.contains('obj-input')) return;
-    if(e.ctrlKey || e.metaKey || e.altKey) return;
-    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
-      const kind = kindOf(el);
-      if(!kind) return;
-      e.preventDefault();
-      const rows = Array.from(shell.querySelectorAll('tr.task-row'));
-      const dir = e.key === 'ArrowDown' ? 1 : -1;
-      for(let i = rows.indexOf(row) + dir; i >= 0 && i < rows.length; i += dir){
-        let target = null;
-        if(kind === 'select.person-slot-select'){
-          target = rows[i].querySelector(`select.person-slot-select[data-slot="${el.dataset.slot}"]`) || rows[i].querySelector('select.person-slot-select');
-        } else {
-          target = rows[i].querySelector(kind);
-        }
-        if(target && !target.disabled){
-          target.focus();
-          if(target.tagName === 'INPUT') target.select();
-          break;
-        }
-      }
-      return;
-    }
-    if(el.tagName === 'INPUT' && el.type !== 'checkbox') return; // on écrit dans un champ : pas de raccourci
-    const k = (e.key || '').toLowerCase();
-    if(k !== 'f' && k !== 'a') return;
-    const sel = row.querySelector('select.status-select');
-    if(!sel || sel.disabled) return;
-    e.preventDefault();
-    const val = k === 'f' ? 'fait' : 'afaire';
-    if(sel.value === val) return;
-    sel.value = val;
-    row.classList.toggle('is-done', val === 'fait');
-    onFieldChange(row.dataset.task, sel);
-  });
-  // le changement de statut à la souris met aussi à jour le style « fait » de la ligne
-  shell.addEventListener('change', e => {
-    const sel = e.target;
-    if(sel && sel.matches && sel.matches('select.status-select')){
-      const row = sel.closest('tr.task-row');
-      if(row) row.classList.toggle('is-done', sel.value === 'fait');
-    }
-  });
-})();
-
-/* --- Statistiques : couleurs selon la valeur + courbe par mois ------------- */
-const FR_MONTHS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-function monthKeyFromLabel(label){
-  const m = /^\s*([^\s]+)\s+(\d{4})\s*$/.exec(String(label || '').toLowerCase());
-  if(!m) return null;
-  const idx = FR_MONTHS.indexOf(m[1]);
-  return idx < 0 ? null : m[2] + '-' + String(idx + 1).padStart(2, '0');
-}
-function numFromCell(td){
-  const v = parseFloat(String(td.textContent || '').replace(/\s/g, '').replace(',', '.'));
-  return isNaN(v) ? 0 : v;
-}
-function heatmapStatsTables(){
-  const panel = document.getElementById('statsPanel');
-  if(!panel) return;
-  panel.querySelectorAll('table.stats-matrix').forEach(table => {
-    if(table.querySelector('input')) return; // mode correction : on ne colore pas
-    const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
-    const skip = heads.map((h, i) => i === 0 || h === 'Total' || h === 'À faire');
-    const cells = [];
-    table.querySelectorAll('tbody tr').forEach(tr => {
-      Array.from(tr.children).forEach((td, i) => { if(!skip[i]) cells.push(td); });
-    });
-    const max = cells.reduce((m, td) => Math.max(m, numFromCell(td)), 0);
-    cells.forEach(td => {
-      const v = numFromCell(td);
-      if(!max || v <= 0){ td.style.background = ''; td.style.color = ''; td.classList.remove('heat'); return; }
-      const a = 0.08 + 0.50 * (v / max);   // plus c'est foncé, plus le chiffre est élevé (texte toujours foncé : lisible)
-      td.classList.add('heat');
-      td.style.background = `rgba(47,111,99,${a.toFixed(3)})`;
-      td.style.color = 'var(--ink)';
-      td.style.fontWeight = '600';
-      td.title = String(v);
-    });
-  });
-}
-function readMonthlyTotals(shellId, mode){
-  const out = {};
-  const shell = document.getElementById(shellId);
-  const table = shell && shell.querySelector('table.stats-matrix');
-  if(!table || table.querySelector('input')) return out;
-  const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
-  table.querySelectorAll('tbody tr').forEach(tr => {
-    const tds = Array.from(tr.children);
-    const mk = monthKeyFromLabel(tds[0] && tds[0].textContent);
-    if(!mk) return;
-    let total = 0;
-    if(mode === 'total'){
-      total = numFromCell(tds[tds.length - 1]);
-    } else {
-      tds.forEach((td, i) => { if(i > 0 && heads[i] !== 'À faire' && heads[i] !== 'Total') total += numFromCell(td); });
-    }
-    out[mk] = Math.round(total * 10) / 10;
-  });
-  return out;
-}
-let lastChartSig = '';
-function renderStatsChart(){
-  const box = document.getElementById('statsChart');
-  if(!box) return;
-  const series = [
-    {name: 'Échanges clients', color: '#2F6F63', dash: '', data: readMonthlyTotals('statsEchangesShell', 'total')},
-    {name: 'Urgences', color: '#B9702E', dash: '7 5', data: readMonthlyTotals('statsUrgencesShell', 'total')},
-    {name: 'Impayés traités', color: '#5B4B8A', dash: '2 4', data: readMonthlyTotals('statsImpayeShell', 'sum')}
-  ];
-  const sig = JSON.stringify(series.map(s => s.data));
-  if(sig === lastChartSig && box.firstChild) return;
-  lastChartSig = sig;
-  const months = [...new Set(series.flatMap(s => Object.keys(s.data)))].sort();
-  if(!months.length){ box.innerHTML = '<div class="empty-note" style="padding:8px;">Pas encore assez de données.</div>'; return; }
-  const W = 1100, H = 220, L = 44, R = 44, T = 14, B = 30;
-  const maxV = Math.max(1, ...series.flatMap(s => Object.values(s.data)));
-  const step = Math.pow(10, Math.floor(Math.log10(maxV)));
-  const top = Math.ceil(maxV / step) * step;
-  const x = i => months.length === 1 ? (L + (W - L - R) / 2) : L + i * (W - L - R) / (months.length - 1);
-  const y = v => T + (H - T - B) * (1 - v / top);
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution mensuelle des échanges clients, urgences et impayés">`;
-  for(let g = 0; g <= 4; g++){
-    const v = top * g / 4, yy = y(v).toFixed(1);
-    svg += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="#DCD5C6" stroke-width="1"/>`;
-    svg += `<text x="${L - 6}" y="${(+yy + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#6b6660">${Math.round(v)}</text>`;
-  }
-  months.forEach((mk, i) => {
-    const [yy, mm] = mk.split('-');
-    const lab = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'][Number(mm) - 1] + ' ' + yy.slice(2);
-    svg += `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#6b6660">${escapeHtml(lab)}</text>`;
-  });
-  series.forEach(s => {
-    const pts = months.map((mk, i) => (s.data[mk] === undefined ? null : [x(i), y(s.data[mk]), s.data[mk], mk]));
-    let d = '', pen = false;
-    pts.forEach(p => { if(!p){ pen = false; return; } d += (pen ? ' L' : ' M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); pen = true; });
-    if(d) svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''}/>`;
-    pts.forEach(p => {
-      if(!p) return;
-      svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="#fff" stroke="${s.color}" stroke-width="2"><title>${escapeHtml(s.name)} — ${escapeHtml(mealMonthLabel(p[3] + '-01'))} : ${p[2]}</title></circle>`;
-    });
-  });
-  svg += '</svg>';
-  const legend = '<div class="chart-legend">' + series.map(s =>
-    `<span><i style="border-top-color:${s.color};border-top-style:${s.dash ? (s.dash === '2 4' ? 'dotted' : 'dashed') : 'solid'};"></i>${escapeHtml(s.name)}</span>`).join('') + '</div>';
-  box.innerHTML = svg + legend;
-}
-function enhanceStats(){
-  try{ heatmapStatsTables(); } catch(e){}
-  try{ renderStatsChart(); } catch(e){}
-}
-(function(){
-  const panel = document.getElementById('statsPanel');
-  if(!panel || typeof MutationObserver === 'undefined') return;
-  let timer = null;
-  // à chaque fois qu'un tableau des statistiques est (re)dessiné, on recolore et on met la courbe à jour
-  new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(enhanceStats, 60); })
-    .observe(panel, {childList: true, subtree: true});
-})();
-
-/* --- Google Sheet « Urgences compagnies » en pop-up -----------------------
-   C'est le vrai Sheet (lien de modification) : les modifications sont enregistrées
-   directement dans le Sheet par Google, au nom de la personne connectée.
-   Chargé à la première ouverture seulement, puis gardé (réouverture instantanée).
-   « Masquer les menus Google » (paramètre rm=minimal) : choix gardé sur chaque poste. */
-(function(){
-  const ov = document.getElementById('sheetOverlay');
-  const btn = document.getElementById('btnSheetUrg');
-  if(!ov || !btn) return;
-  const base = ov.dataset.sheetUrl || '';
-  const frame = document.getElementById('sheetFrame');
-  const minimal = document.getElementById('sheetMinimal');
-  const link = document.getElementById('sheetOpenLink');
-  const gidMatch = /[?&#]gid=(\d+)/.exec(base);
-  const hash = gidMatch ? '#gid=' + gidMatch[1] : '';
-  function embedUrl(){
-    const clean = base.split('#')[0];
-    return clean + (minimal && minimal.checked ? (clean.includes('?') ? '&' : '?') + 'rm=minimal' : '') + hash;
-  }
-  if(link) link.href = base.split('#')[0] + hash;
-  if(minimal){
-    minimal.checked = plLocal.get('pl-sheet-minimal', '0') === '1';
-    minimal.addEventListener('change', () => {
-      plLocal.set('pl-sheet-minimal', minimal.checked ? '1' : '0');
-      if(frame.getAttribute('src')) frame.src = embedUrl();
-    });
-  }
-  function open(){
-    if(!frame.getAttribute('src')) frame.src = embedUrl();
-    ov.classList.add('open');
-    document.body.classList.add('pl-modal-open');
-  }
-  function close(){
-    ov.classList.remove('open');
-    document.body.classList.toggle('pl-modal-open', !!document.querySelector('.pl-overlay.open'));
-  }
-  btn.addEventListener('click', open);
-  ov.querySelector('[data-close="sheet"]').addEventListener('click', close);
-  ov.addEventListener('click', e => { if(e.target === ov) close(); });
-  document.getElementById('btnSheetReload').addEventListener('click', () => { frame.src = embedUrl(); });
-  // Taille d'affichage : on réduit (ou agrandit) toute la fenêtre du Sheet pour voir plus de colonnes.
-  // Le Sheet lui-même n'est pas modifié ; le choix est gardé sur chaque poste.
-  const ZOOMS = [50, 60, 70, 75, 80, 85, 90, 100, 110, 125];
-  const ZOOM_DEFAULT = 85;   // taille d'affichage par défaut du Sheet
-  let zoom = parseInt(plLocal.get('pl-sheet-zoom', String(ZOOM_DEFAULT)), 10);
-  if(!ZOOMS.includes(zoom)) zoom = ZOOM_DEFAULT;
-  const zoomLabel = document.getElementById('btnSheetZoomReset');
-  function applyZoom(){
-    const f = zoom / 100;
-    frame.style.transform = f === 1 ? '' : 'scale(' + f + ')';
-    frame.style.width = (100 / f) + '%';
-    frame.style.height = (100 / f) + '%';
-    if(zoomLabel) zoomLabel.textContent = zoom + ' %';
-    plLocal.set('pl-sheet-zoom', String(zoom));
-  }
-  function stepZoom(dir){
-    const i = ZOOMS.indexOf(zoom);
-    zoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i + dir))];
-    applyZoom();
-  }
-  document.getElementById('btnSheetZoomOut').addEventListener('click', () => stepZoom(-1));
-  document.getElementById('btnSheetZoomIn').addEventListener('click', () => stepZoom(1));
-  if(zoomLabel) zoomLabel.addEventListener('click', () => { zoom = ZOOM_DEFAULT; applyZoom(); });
-  applyZoom();
-  document.addEventListener('keydown', e => { if(e.key === 'Escape' && ov.classList.contains('open')) close(); });
-})();
