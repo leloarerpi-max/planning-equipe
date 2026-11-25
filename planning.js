@@ -979,7 +979,7 @@ function categoryTotalsBadgesHtml(catTotals){
 }
 
 function renderSummary(){
-  const f = currentFilters();
+  const f = Object.assign({}, currentFilters(), { hideDone: false, search: '' });   // « Masquer les faites » et la recherche ne changent pas les chiffres
   const visible = dayData.tasks.filter(t => taskMatchesFilters(t, f));
 
   const totalObjectif = visible.reduce((s,t) => s + (Number(t.objectif)||0), 0);
