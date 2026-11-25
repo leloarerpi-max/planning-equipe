@@ -571,9 +571,16 @@ function currentFilters(){
     person: document.getElementById('filterPerson').value,
     priority: document.getElementById('filterPriority').value,
     status: document.getElementById('filterStatus').value,
+    search: ((document.getElementById('filterSearch') || {}).value || '').trim().toLowerCase(),
+    hideDone: !!((document.getElementById('filterHideDone') || {}).checked),
   };
 }
 function taskMatchesFilters(t, f){
+  if(f.hideDone && t.status === 'fait') return false;
+  if(f.search){
+    const names = (t.personIds || []).map(id => { const p = people.find(x => x.id === id); return p ? p.name : ''; }).join(' ');
+    if(!((t.name || '') + ' ' + names).toLowerCase().includes(f.search)) return false;
+  }
   if(f.person){
     if(f.person === '__none__'){ if(t.personIds.length) return false; }
     else if(!t.personIds.includes(f.person)) return false;
@@ -1261,14 +1268,15 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
 document.getElementById('filterPerson').addEventListener('change', renderTable);
 document.getElementById('filterPriority').addEventListener('change', renderTable);
 document.getElementById('filterStatus').addEventListener('change', renderTable);
+{ const fs = document.getElementById('filterSearch'); if(fs) fs.addEventListener('input', renderTable);
+  const fh = document.getElementById('filterHideDone'); if(fh) fh.addEventListener('change', renderTable); }
 
 document.getElementById('btnStats').addEventListener('click', toggleStatsPanel);
 document.getElementById('btnJournal').addEventListener('click', toggleJournalPanel);
 let journalOpen = false;
 async function toggleJournalPanel(){
-  const panel = document.getElementById('journalPanel');
   journalOpen = !journalOpen;
-  panel.style.display = journalOpen ? 'block' : 'none';
+  if(journalOpen) plOpen('journalOverlay'); else plClose('journalOverlay');
   if(journalOpen) await loadJournal();
 }
 async function loadJournal(){
@@ -1296,9 +1304,8 @@ async function loadJournal(){
 }
 let statsOpen = false;
 async function toggleStatsPanel(){
-  const panel = document.getElementById('statsPanel');
   statsOpen = !statsOpen;
-  panel.style.display = statsOpen ? 'block' : 'none';
+  if(statsOpen) plOpen('statsOverlay'); else plClose('statsOverlay');
   if(statsOpen) await computeAndRenderStats();
 }
 
@@ -1453,9 +1460,11 @@ async function computeAndRenderStats(){
   }
 
   // Avenants WF par personne et par mois (compteur « Fait par », indépendant des lignes supprimées)
+  window.__stM = { echanges: monthlyEchanges, urgences: monthlyUrgences };
   try{ await renderAvenantsStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ await renderImpayeStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
   try{ await renderMedStats(); } catch(e){ /* ne doit jamais bloquer les autres statistiques */ }
+  try{ await renderEvolutionChart(); } catch(e){ /* graphique facultatif */ }
   try{ moveRepartitionToBottom(); } catch(e){ /* simple réorganisation de l'affichage */ }
 }
 
@@ -1987,4 +1996,137 @@ async function importData(e){
 /* ==========================================================================
    ONGLETS PERSONNALISÉS (comme des feuilles Excel en plus du Planning)
    ========================================================================== */
+
+/* ==========================================================================
+   Barre d'outils du Planning : fenêtres (pop-ups), densité, menu « Plus », Google Sheet des urgences,
+   évolution par mois. (Code rétabli : il avait disparu du fichier.)
+   ========================================================================== */
+function plOpen(id){
+  const el = document.getElementById(id); if(!el) return;
+  el.classList.add('open'); document.body.classList.add('pl-modal-open');
+}
+function plClose(id){
+  const el = document.getElementById(id); if(!el) return;
+  el.classList.remove('open');
+  if(!document.querySelector('.pl-overlay.open')) document.body.classList.remove('pl-modal-open');
+  if(id === 'statsOverlay') statsOpen = false;
+  if(id === 'journalOverlay') journalOpen = false;
+}
+(function wirePlToolbar(){
+  // fermeture : croix, clic à côté, touche Échap
+  document.querySelectorAll('.pl-overlay').forEach(ov => {
+    ov.addEventListener('mousedown', e => { if(e.target === ov) plClose(ov.id); });
+  });
+  document.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', () => plClose(b.dataset.close + 'Overlay'));
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key !== 'Escape') return;
+    const open = [...document.querySelectorAll('.pl-overlay.open')].pop();
+    if(open) plClose(open.id);
+  });
+
+  // densité Compact / Confort
+  const seg = document.querySelectorAll('.pl-seg [data-density]');
+  const ls = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} } };
+  function setDensity(d){
+    document.body.classList.toggle('dens-confort', d === 'confort');
+    seg.forEach(b => b.classList.toggle('on', b.dataset.density === d));
+    ls.set('po-density', d);
+  }
+  seg.forEach(b => b.addEventListener('click', () => setDensity(b.dataset.density)));
+  setDensity(ls.get('po-density') === 'confort' ? 'confort' : 'compact');
+
+  // menu « Plus »
+  const more = document.getElementById('btnMore'), menu = document.getElementById('moreMenu');
+  if(more && menu){
+    const setOpen = o => { menu.classList.toggle('open', o); more.setAttribute('aria-expanded', o ? 'true' : 'false'); };
+    more.addEventListener('click', e => { e.stopPropagation(); setOpen(!menu.classList.contains('open')); });
+    menu.addEventListener('click', () => setOpen(false));
+    document.addEventListener('click', e => { if(!menu.contains(e.target) && e.target !== more) setOpen(false); });
+    document.addEventListener('keydown', e => { if(e.key === 'Escape') setOpen(false); });
+  }
+
+  // Google Sheet « Urgences compagnies »
+  const ov = document.getElementById('sheetOverlay'), frame = document.getElementById('sheetFrame');
+  if(ov && frame){
+    const baseUrl = ov.dataset.sheetUrl;
+    const minimal = document.getElementById('sheetMinimal');
+    const zin = document.getElementById('btnSheetZoomIn'), zout = document.getElementById('btnSheetZoomOut'), zres = document.getElementById('btnSheetZoomReset');
+    const link = document.getElementById('sheetOpenLink');
+    let zoom = parseInt(ls.get('po-sheet-zoom'), 10); if(!(zoom >= 40 && zoom <= 200)) zoom = 85;
+    if(minimal) minimal.checked = ls.get('po-sheet-min') === '1';
+    const url = () => baseUrl + ((minimal && minimal.checked) ? (baseUrl.includes('?') ? '&' : '?') + 'rm=minimal' : '');
+    function applyZoom(){
+      const k = zoom / 100;
+      frame.style.transform = 'scale(' + k + ')';
+      frame.style.width = (100 / k) + '%'; frame.style.height = (100 / k) + '%';
+      if(zres) zres.textContent = zoom + ' %';
+      ls.set('po-sheet-zoom', String(zoom));
+    }
+    function load(){ frame.src = url(); if(link) link.href = baseUrl; }
+    applyZoom();
+    if(zin) zin.addEventListener('click', () => { zoom = Math.min(200, zoom + 5); applyZoom(); });
+    if(zout) zout.addEventListener('click', () => { zoom = Math.max(40, zoom - 5); applyZoom(); });
+    if(zres) zres.addEventListener('click', () => { zoom = 85; applyZoom(); });
+    const rel = document.getElementById('btnSheetReload'); if(rel) rel.addEventListener('click', load);
+    if(minimal) minimal.addEventListener('change', () => { ls.set('po-sheet-min', minimal.checked ? '1' : '0'); load(); });
+    const b = document.getElementById('btnSheetUrg');
+    if(b) b.addEventListener('click', () => { if(!frame.getAttribute('src')) load(); else if(link) link.href = baseUrl; plOpen('sheetOverlay'); });
+  }
+})();
+
+/* Évolution par mois : échanges clients, urgences, impayés, mises en demeure (totaux du mois). */
+async function renderEvolutionChart(){
+  const box = document.getElementById('statsChart'); if(!box) return;
+  const M = window.__stM || {};
+  const sum = o => Object.keys(o || {}).reduce((a, k) => a + (Number(o[k]) || 0), 0);
+  const series = [
+    { name: 'Échanges clients', color: '#6b4fa3', data: {} },
+    { name: 'Urgences', color: '#c0392b', data: {} },
+    { name: 'Impayés', color: '#c98a2b', data: {} },
+    { name: 'Mises en demeure', color: '#2f7d6d', data: {} },
+  ];
+  Object.keys(M.echanges || {}).forEach(mk => { series[0].data[mk] = sum(M.echanges[mk]); });
+  Object.keys(M.urgences || {}).forEach(mk => { series[1].data[mk] = sum(M.urgences[mk]); });
+  async function tracker(key, arcKey, dest){
+    try{
+      const arc = await storageGet(arcKey);
+      if(arc && arc.monthly) Object.keys(arc.monthly).forEach(mk => { dest[mk] = (dest[mk] || 0) + sum(arc.monthly[mk]); });
+    } catch(e){}
+    try{
+      const v = await storageGet(key);
+      ((v && Array.isArray(v.rows)) ? v.rows : []).forEach(r => {
+        const n = Number(r && r.count) || 0; const m = /^(\d{4})-(\d{2})-\d{2}$/.exec((r && r.date) || '');
+        if(n && m){ const mk = m[1] + '-' + m[2]; dest[mk] = (dest[mk] || 0) + n; }
+      });
+    } catch(e){}
+  }
+  await tracker('po:impaye', 'po:impaye-archive', series[2].data);
+  await tracker('po:med', 'po:med-archive', series[3].data);
+  const months = [...new Set(series.flatMap(s => Object.keys(s.data)))].sort();
+  if(!months.length){ box.innerHTML = '<div class="empty-note">Pas encore assez de données.</div>'; return; }
+  const W = 900, H = 260, L = 44, R = 10, T = 14, B = 34;
+  const max = Math.max(1, ...series.flatMap(s => months.map(m => s.data[m] || 0)));
+  const step = Math.pow(10, Math.floor(Math.log10(max))); const top = Math.ceil(max / step) * step;
+  const gw = (W - L - R) / months.length, bw = Math.min(26, (gw - 10) / series.length);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution par mois">`;
+  for(let i = 0; i <= 4; i++){
+    const y = T + (H - T - B) * (1 - i / 4), val = Math.round(top * i / 4);
+    svg += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#e4d8c3" stroke-width="1"/><text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="#7a6e5a">${val}</text>`;
+  }
+  months.forEach((m, i) => {
+    const x0 = L + i * gw + (gw - bw * series.length) / 2;
+    series.forEach((s, j) => {
+      const v = s.data[m] || 0, h = (H - T - B) * v / top;
+      svg += `<rect x="${x0 + j * bw}" y="${T + (H - T - B) - h}" width="${bw - 2}" height="${h}" rx="2" fill="${s.color}"><title>${s.name} — ${mealMonthLabel(m + '-01')} : ${v}</title></rect>`;
+    });
+    svg += `<text x="${L + i * gw + gw / 2}" y="${H - 14}" text-anchor="middle" font-size="11" fill="#4a3f2c">${escapeHtml(mealMonthLabel(m + '-01'))}</text>`;
+  });
+  svg += '</svg>';
+  const legend = '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:6px;">' +
+    series.map(s => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color};margin-right:5px;"></i>${s.name}</span>`).join('') + '</div>';
+  box.innerHTML = svg + legend;
+}
+
 init();
