@@ -46,7 +46,6 @@
     .impaye-table td{ height:30px; }
     .impaye-table input, .impaye-table select, .impaye-status{ height:28px; }
     .impaye-table{ table-layout:fixed; min-width:0; }
-    .impaye-table td:nth-child(1){ width:33%; } .impaye-table td:nth-child(2){ width:22%; } .impaye-table td:nth-child(3){ width:16%; } .impaye-table td:nth-child(4){ width:29%; } .impaye-table td.impaye-x{ width:26px; }
     .impaye-table input[type=date]{ min-width:0; font-size:13px; padding:0 2px; }
   `;
   document.head.appendChild(st);
@@ -126,7 +125,7 @@
             <button class="btn-ghost" data-act="clear" title="Réservé au superviseur">Vider</button>
           </div>
         </div>
-        <table class="impaye-table"><tbody>
+        <table class="impaye-table"><colgroup><col style="width:33%"><col style="width:22%"><col style="width:16%"><col style="width:29%"><col style="width:26px"></colgroup><tbody>
           ${body}
           <tr class="impaye-total"><td>${cfg.totalLabel}</td><td data-total>${total()}</td><td></td><td></td><td class="impaye-x"></td></tr>
         </tbody></table>`;
