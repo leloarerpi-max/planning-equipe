@@ -583,12 +583,7 @@
   .pl-side .cat-badges-row{ display:grid; grid-template-columns:repeat(auto-fill, minmax(92px,1fr)); gap:4px; }
   .pl-side .cat-badge{ flex-direction:column; align-items:flex-start; gap:0; border-radius:3px; padding:3px 7px; font-size:10px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; }
   .pl-side .cat-badge b{ font-size:13px; }
-  .pl-side #btnReportSuivi{
-    grid-column:1 / -1; justify-self:stretch; margin:4px 0 0 !important; padding:6px 10px; font-size:12.5px; font-weight:600;
-    background:var(--ink); color:#fff; border:1px solid var(--ink); border-radius:var(--radius); text-decoration:none; text-align:center;
-  }
-  .pl-side #btnReportSuivi:hover{ background:#3a3733; }
-  .pl-side #btnReportSuivi:disabled{ opacity:.5; cursor:wait; }
+  .pl-side #btnReportSuivi{ grid-column:1 / -1; justify-self:start; margin:2px 0 0 !important; padding:2px 0; font-size:12px; }
   .side-card{ margin:0; background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius); padding:12px 14px; }
   .pl-side h2, .pl-side .impaye-head h2{ font-size:15px !important; margin:0 0 8px; display:flex; align-items:center; gap:6px; }
   .pl-side .urgences-inputs{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 8px; overflow:visible; }
@@ -680,23 +675,6 @@
     .stats-grid{ grid-template-columns:1fr; }
     .pl-overlay{ padding:0; }
     .pl-modal{ max-height:100vh; border-radius:0; }
-  }
-
-  /* ===== Écran VERTICAL (ordinateur) : résumé du jour en 2 colonnes sous le tableau. L'affichage horizontal ne change pas. ===== */
-  @media (orientation:portrait) and (min-width:701px){
-    .pl-main{ display:block; }
-    .pl-left{ margin-bottom:14px; }
-    .pl-side{
-      max-width:none; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-      grid-template-rows:auto auto auto; column-gap:14px; row-gap:0; align-items:start;
-    }
-    .pl-side > *{ margin:0 0 12px; min-width:0; }
-    .pl-side > .team-objectif{ grid-column:1; grid-row:1; }
-    .pl-side > #summaryByPerson{ grid-column:1; grid-row:2 / 4; }
-    .pl-side > #urgencesPanel{ grid-column:2; grid-row:1 / 3; }
-    .pl-side > .suivi-row{ grid-column:2; grid-row:3; }
-    .pl-side .bar-row .bar-label{ width:92px; }
-    .pl-side .bar-row .bar-count{ width:46px; }
   }
 </style>
 </head>
